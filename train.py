@@ -1,4 +1,4 @@
-"""Train a 2D CNN to classify doorbell audio into downstairs / upstairs / environment."""
+"""Train a 1D CNN to classify doorbell audio into downstairs / upstairs / environment."""
 
 import json
 import os
@@ -10,7 +10,7 @@ import tensorflow as tf
 
 DATA_DIR = "data"
 MFCC_FRAMES = 40
-MAX_T = 256
+MAX_T = 128
 BATCH_SIZE = 32
 EPOCHS = 100
 MODEL_PATH = "model.h5"
@@ -46,22 +46,22 @@ def load_dataset(data_dir):
             xs.append(mfcc)
             ys.append(label_map[label])
 
-    X = np.array(xs).astype("float32")
+    X = np.stack(xs).transpose(0, 2, 1).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
     y = np.array(ys, dtype="int32")
     return X, y, label_map
 
 
 def build_model(n_classes):
-    """Minimal 2D CNN: Conv2D → MaxPool × 2 → Flatten → Dense."""
+    """Minimal 1D CNN on MFCCs: Conv1D → MaxPool × 2 → Flatten → Dense."""
     model = tf.keras.Sequential([
-        tf.keras.layers.Reshape((MFCC_FRAMES, MAX_T, 1), input_shape=(MFCC_FRAMES, MAX_T)),
-        tf.keras.layers.Conv2D(32, (3, 3), activation="relu", padding="same"),
-        tf.keras.layers.MaxPooling2D((2, 2)),
-        tf.keras.layers.Conv2D(64, (3, 3), activation="relu", padding="same"),
-        tf.keras.layers.MaxPooling2D((2, 2)),
+        tf.keras.layers.Input(shape=(MAX_T, MFCC_FRAMES)),
+        tf.keras.layers.Conv1D(64, 5, activation="relu", padding="same"),
+        tf.keras.layers.MaxPooling1D(2),
+        tf.keras.layers.Conv1D(128, 5, activation="relu", padding="same"),
+        tf.keras.layers.MaxPooling1D(2),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(128, activation="relu"),
-        tf.keras.layers.Dropout(0.5),
+        tf.keras.layers.Dense(64, activation="relu"),
+        tf.keras.layers.Dropout(0.3),
         tf.keras.layers.Dense(n_classes, activation="softmax"),
     ])
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
