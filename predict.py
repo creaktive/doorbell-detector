@@ -7,6 +7,7 @@ import numpy as np
 import librosa
 import tensorflow as tf
 
+SAMPLE_RATE = 8000
 MFCC_FRAMES = 40
 MAX_T = 128
 MODEL_PATH = "model.h5"
@@ -15,8 +16,8 @@ LABEL_MAP_PATH = "label_map.json"
 
 def predict(path, model, idx_to_label):
     """Load wav, extract MFCCs, return (predicted_label, confidence)."""
-    y, sr = librosa.load(path, sr=None, mono=True)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=MFCC_FRAMES)
+    y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+    mfcc = librosa.feature.mfcc(y=y, sr=SAMPLE_RATE, n_mfcc=MFCC_FRAMES)
 
     # Pad or truncate to MAX_T
     if mfcc.shape[1] < MAX_T:

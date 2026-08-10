@@ -9,6 +9,7 @@ import librosa
 import tensorflow as tf
 
 DATA_DIR = "data"
+SAMPLE_RATE = 8000
 MFCC_FRAMES = 40
 MAX_T = 128
 BATCH_SIZE = 32
@@ -36,8 +37,8 @@ def load_dataset(data_dir):
             if not fname.endswith(".wav"):
                 continue
             path = os.path.join(label_dir, fname)
-            y, sr = librosa.load(path, sr=None, mono=True)
-            mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=MFCC_FRAMES)
+            y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+            mfcc = librosa.feature.mfcc(y=y, sr=SAMPLE_RATE, n_mfcc=MFCC_FRAMES)
             if mfcc.shape[1] < MAX_T:
                 pad = np.zeros((MFCC_FRAMES, MAX_T - mfcc.shape[1]))
                 mfcc = np.hstack([mfcc, pad])
