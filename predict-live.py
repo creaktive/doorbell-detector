@@ -1,6 +1,7 @@
+#!/usr/bin/env python
+
 """Live classification from microphone at 8kHz using a trained 1D CNN."""
 
-import logging
 import signal
 import sys
 import threading
@@ -12,9 +13,6 @@ import tensorflow as tf
 
 from config import BUFFER_SEC, CLASSIFY_HZ, SAMPLE_RATE
 from model_io import load_model, mfcc_features
-
-tf.get_logger().setLevel(logging.ERROR)
-
 
 class AudioRing:
     """Lock-free-ish ring buffer for audio samples."""

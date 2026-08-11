@@ -1,12 +1,12 @@
 """Shared constants across all doorbell scripts."""
 
-SAMPLE_RATE = 8000
-MFCC_FRAMES = 40
-MAX_T = 128
-MODEL_PATH = "model.keras"
-LABEL_MAP_PATH = "label_map.json"
-DATA_DIR = "data"
+BATCH_SIZE = 32
 BUFFER_SEC = 16
 CLASSIFY_HZ = 1
-BATCH_SIZE = 32
+DATA_DIR = "data"
 EPOCHS = 100
+LABELS = ["downstairs", "upstairs", "environment"]
+MAX_T = 128
+MFCC_FRAMES = 40
+MODEL_PATH = "doorbell.keras"
+SAMPLE_RATE = 8000

@@ -1,33 +1,25 @@
+#!/usr/bin/env python
+
 """Train a 1D CNN to classify doorbell audio into downstairs / upstairs / environment."""
 
-import json
-import logging
 import os
 from collections import Counter
 
+import librosa
 import numpy as np
 import tensorflow as tf
 
-from config import BATCH_SIZE, DATA_DIR, EPOCHS, MFCC_FRAMES, MAX_T, MODEL_PATH
+from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_PATH, SAMPLE_RATE
 from model_io import mfcc_features
-
-tf.get_logger().setLevel(logging.ERROR)
-
 
 def load_dataset(data_dir):
     """Walk data_dir, load wav files, extract MFCCs. Returns X, y."""
-    label_map = {}
-    idx = 0
-    for label in sorted(os.listdir(data_dir)):
-        label_dir = os.path.join(data_dir, label)
-        if not os.path.isdir(label_dir):
-            continue
-        label_map[label] = idx
-        idx += 1
+    label_map = {name: i for i, name in enumerate(LABELS)}
 
     xs, ys = [], []
-    import librosa
     for label in sorted(os.listdir(data_dir)):
+        if label not in label_map:
+            continue
         label_dir = os.path.join(data_dir, label)
         if not os.path.isdir(label_dir):
             continue
@@ -35,15 +27,14 @@ def load_dataset(data_dir):
             if not fname.endswith(".wav"):
                 continue
             path = os.path.join(label_dir, fname)
-            y, _ = librosa.load(path, sr=8000, mono=True)
+            y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
             X = mfcc_features(y)
             xs.append(X)
             ys.append(label_map[label])
 
     X = np.concatenate(xs).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
     y = np.array(ys, dtype="int32")
-    return X, y, label_map
-
+    return X, y
 
 def build_model(n_classes):
     """Minimal 1D CNN on MFCCs: Conv1D → MaxPool × 2 → Flatten → Dense."""
@@ -62,13 +53,12 @@ def build_model(n_classes):
                   loss="sparse_categorical_crossentropy", metrics=["accuracy"])
     return model
 
-
 def main():
     print("Loading dataset...")
-    X, y, label_map = load_dataset(DATA_DIR)
-    n_classes = len(label_map)
+    X, y = load_dataset(DATA_DIR)
+    n_classes = len(LABELS)
     counts = Counter(y.tolist())
-    print(f"Samples: {X.shape[0]}, Classes: {n_classes}, Label map: {label_map}")
+    print(f"Samples: {X.shape[0]}, Classes: {n_classes}, Labels: {LABELS}")
     print(f"Class distribution: {dict(counts)}")
 
     # Compute class weights to handle imbalance (ponytail: inverse frequency weighting)
@@ -100,10 +90,7 @@ def main():
     print(f"Best epoch: {best_epoch}, val_accuracy: {history.history['val_accuracy'][best_epoch-1]:.4f}")
 
     model.save(MODEL_PATH)
-    with open("label_map.json", "w") as f:
-        json.dump(label_map, f)
     print(f"Saved model to {MODEL_PATH}")
-
 
 if __name__ == "__main__":
     main()

@@ -1,27 +1,24 @@
+#!/usr/bin/env python
+
 """Predict category for a single wav file using the trained model."""
 
-import logging
 import os
 import sys
 
+import librosa
 import numpy as np
 import tensorflow as tf
 
 from config import SAMPLE_RATE
 from model_io import load_model, mfcc_features
 
-tf.get_logger().setLevel(logging.ERROR)
-
-
 def predict(path, model, idx_to_label):
     """Load wav, extract MFCCs, return (predicted_label, confidence)."""
-    import librosa
     y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
     X = mfcc_features(y)
     probs = model.predict(X, verbose=0)[0]
     idx = int(np.argmax(probs))
     return idx_to_label[idx], float(probs[idx])
-
 
 def main():
     if len(sys.argv) < 2:
