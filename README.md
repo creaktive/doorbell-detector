@@ -7,7 +7,6 @@ A 1D CNN that classifies doorbell audio into three categories: **downstairs**, *
 - Python ≥3.9
 - [sox](https://sourceforge.net/p/sox/wiki/Home/) - audio augmentation and format conversion
 - `bsdtar` (Linux: `sudo apt install libarchive-tools`, macOS: built-in) - environment sounds extraction
-- PortAudio library (Linux: `sudo apt install portaudio19-dev`, macOS: `brew install portaudio`)
 
 ## Setup
 
@@ -26,7 +25,7 @@ pip install librosa numpy tensorflow
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install librosa numpy sounddevice ai-edge-litert
+pip install librosa numpy ai-edge-litert
 ```
 
 ## Data Preparation
@@ -102,27 +101,6 @@ upstairs	97.20%	doorbell-upstairs-12.wav
 environment	100.00%	background-noise.wav
 ```
 
-## Live Classification
-
-Run continuous classification from your microphone:
-
-```bash
-python predict-live.py
-```
-
-This streams audio at 8kHz, classifies the latest 8 seconds every second, and prints results:
-
-```
-Starting microphone at 8000Hz mono...
-Classifying every 1s (latest 16s of audio). Press Ctrl-C to exit.
-
-downstairs          (99.85%)
-environment         (100.00%)
-upstairs            (97.20%)
-```
-
-Press **Ctrl-C** to stop. On Linux, the microphone defaults to ALSA `plug:dsnoop` for shared access; on macOS/Windows it uses the system default device.
-
 ## Model Architecture
 
 ```
@@ -141,6 +119,5 @@ Input(128, 40) → Conv1D(64, k=5, relu, same) → MaxPool(2)
 | `inferencer.py` | MFCC extraction and LiteRT inference utilities |
 | `train.py` | Training script - loads data, builds model, trains, converts to INT8 TFLite |
 | `predict.py` | Batch prediction on `.wav` files using LiteRT |
-| `predict-live.py` | Live microphone classification using LiteRT |
 | `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters) |
 | `get-env-data.sh` | Download ESC-50 environmental sounds |
