@@ -23,17 +23,22 @@ def mfcc_features(audio: np.ndarray) -> np.ndarray:
 _litert_sig_key = None
 _litert_input_name = None
 _litert_output_name = None
+_output_shape = None
 
 
 def load_model():
     """Load trained LiteRT model and label map. Returns (compiled_model, idx_to_label)."""
-    global _litert_sig_key, _litert_input_name, _litert_output_name
+    global _litert_sig_key, _litert_input_name, _litert_output_name, _output_shape
 
     model = CompiledModel.from_file(MODEL_TFLITE_PATH)
     sigs = model.get_signature_list()
     _litert_sig_key = list(sigs.keys())[0]
     _litert_input_name = sigs[_litert_sig_key]["inputs"][0]
     _litert_output_name = sigs[_litert_sig_key]["outputs"][0]
+
+    # Output shape is always (1, num_classes) — derived from LABELS since
+    # get_output_tensor_details() doesn't exist on Linux/RPi builds of ai-edge-litert
+    _output_shape = [1, len(LABELS)]
 
     idx_to_label = {i: name for i, name in enumerate(LABELS)}
     return model, idx_to_label
@@ -47,12 +52,11 @@ def run_inference(model, X):
     input_buf.write(X)
     model.run_by_name(_litert_sig_key, {_litert_input_name: input_buf}, {_litert_output_name: output_buf})
 
-    out_details = output_buf.get_tensor_details()
     num_elements = 1
-    for s in out_details["shape"]:
+    for s in _output_shape:
         num_elements *= int(s)
-    result = output_buf.read(num_elements, "float32")
-    return result.reshape(out_details["shape"])[0]
+    result = output_buf.read(num_elements, np.float32)
+    return result.reshape(_output_shape)[0]
 
 
 def get_label_map():
