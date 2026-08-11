@@ -1,6 +1,5 @@
 """Live classification from microphone at 8kHz using a trained 1D CNN."""
 
-import json
 import logging
 import signal
 import sys
@@ -8,20 +7,13 @@ import threading
 import time
 
 import numpy as np
-import librosa
 import sounddevice as sd
 import tensorflow as tf
 
-tf.get_logger().setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)
+from config import BUFFER_SEC, CLASSIFY_HZ, SAMPLE_RATE
+from model_io import load_model, mfcc_features
 
-SAMPLE_RATE = 8000
-MFCC_FRAMES = 40
-MAX_T = 128
-BUFFER_SEC = 16
-CLASSIFY_HZ = 1
-MODEL_PATH = "model.keras"
-LABEL_MAP_PATH = "label_map.json"
+tf.get_logger().setLevel(logging.ERROR)
 
 
 class AudioRing:
@@ -58,17 +50,6 @@ class AudioRing:
                 return np.concatenate([self.buf[start:], self.buf[:end]])
 
 
-def mfcc_features(audio: np.ndarray):
-    """Extract MFCCs and pad/truncate to MAX_T, matching train.py exactly."""
-    mfcc = librosa.feature.mfcc(y=audio, sr=SAMPLE_RATE, n_mfcc=MFCC_FRAMES)
-    if mfcc.shape[1] < MAX_T:
-        pad = np.zeros((MFCC_FRAMES, MAX_T - mfcc.shape[1]))
-        mfcc = np.hstack([mfcc, pad])
-    else:
-        mfcc = mfcc[:, :MAX_T]
-    return mfcc.astype("float32").T.reshape(1, MAX_T, MFCC_FRAMES)
-
-
 def classify(model, idx_to_label, audio: np.ndarray):
     """Run inference on audio samples, return (label, confidence)."""
     X = mfcc_features(audio)
@@ -80,10 +61,7 @@ def classify(model, idx_to_label, audio: np.ndarray):
 def main():
     # Load model and labels
     print("Loading model...")
-    model = tf.keras.models.load_model(MODEL_PATH)
-    with open(LABEL_MAP_PATH) as f:
-        label_map = json.load(f)
-    idx_to_label = {int(v): k for k, v in label_map.items()}
+    model, idx_to_label = load_model()
 
     # Setup ring buffer and audio stream
     ring = AudioRing()

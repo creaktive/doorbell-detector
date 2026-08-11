@@ -6,19 +6,12 @@ import os
 from collections import Counter
 
 import numpy as np
-import librosa
 import tensorflow as tf
 
-tf.get_logger().setLevel(logging.ERROR)
-logging.getLogger("absl").setLevel(logging.ERROR)
+from config import BATCH_SIZE, DATA_DIR, EPOCHS, MFCC_FRAMES, MAX_T, MODEL_PATH
+from model_io import mfcc_features
 
-DATA_DIR = "data"
-SAMPLE_RATE = 8000
-MFCC_FRAMES = 40
-MAX_T = 128
-BATCH_SIZE = 32
-EPOCHS = 100
-MODEL_PATH = "model.keras"
+tf.get_logger().setLevel(logging.ERROR)
 
 
 def load_dataset(data_dir):
@@ -33,6 +26,7 @@ def load_dataset(data_dir):
         idx += 1
 
     xs, ys = [], []
+    import librosa
     for label in sorted(os.listdir(data_dir)):
         label_dir = os.path.join(data_dir, label)
         if not os.path.isdir(label_dir):
@@ -41,17 +35,12 @@ def load_dataset(data_dir):
             if not fname.endswith(".wav"):
                 continue
             path = os.path.join(label_dir, fname)
-            y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-            mfcc = librosa.feature.mfcc(y=y, sr=SAMPLE_RATE, n_mfcc=MFCC_FRAMES)
-            if mfcc.shape[1] < MAX_T:
-                pad = np.zeros((MFCC_FRAMES, MAX_T - mfcc.shape[1]))
-                mfcc = np.hstack([mfcc, pad])
-            else:
-                mfcc = mfcc[:, :MAX_T]
-            xs.append(mfcc)
+            y, _ = librosa.load(path, sr=8000, mono=True)
+            X = mfcc_features(y)
+            xs.append(X)
             ys.append(label_map[label])
 
-    X = np.stack(xs).transpose(0, 2, 1).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
+    X = np.concatenate(xs).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
     y = np.array(ys, dtype="int32")
     return X, y, label_map
 
