@@ -9,6 +9,8 @@ import librosa
 import numpy as np
 import tensorflow as tf
 
+from ai_edge_litert.compiled_model import CompiledModel
+
 from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_TFLITE_PATH, SAMPLE_RATE
 from inferencer import mfcc_features
 
@@ -107,20 +109,22 @@ def main():
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     converter.target_spec.supported_types = [tf.float16]
-
     tflite_model = converter.convert()
 
     with open(MODEL_TFLITE_PATH, "wb") as f:
         f.write(tflite_model)
     print(f"Saved {MODEL_TFLITE_PATH} ({len(tflite_model)} bytes)")
 
-    # Print tensor info for CompiledModel API
-    interpreter = tf.lite.Interpreter(model_content=tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()[0]
-    output_details = interpreter.get_output_details()[0]
-    print(f"Input name:  '{input_details['name']}', shape={list(input_details['shape'])}, dtype={input_details['dtype']}")
-    print(f"Output name: '{output_details['name']}', shape={list(output_details['shape'])}, dtype={output_details['dtype']}")
+    # Print tensor info via LiteRT CompiledModel API (same as runtime inference).
+    compiled = CompiledModel.from_file(MODEL_TFLITE_PATH)
+    sigs = compiled.get_signature_list()
+    sig_key = list(sigs.keys())[0]
+    details = compiled.get_input_tensor_details(sig_key)
+    inp = details[sigs[sig_key]["inputs"][0]]
+    out_details = compiled.get_output_tensor_details(sig_key)
+    out = out_details[sigs[sig_key]["outputs"][0]]
+    print(f"Input name:  '{inp['name']}', shape={list(inp['shape'])}, dtype={inp['dtype']}")
+    print(f"Output name: '{out['name']}', shape={list(out['shape'])}, dtype={out['dtype']}")
 
 if __name__ == "__main__":
     main()
