@@ -1,16 +1,21 @@
 """Predict category for a single wav file using the trained model."""
 
+import logging
 import os
 import sys
+
 import json
 import numpy as np
 import librosa
 import tensorflow as tf
 
+tf.get_logger().setLevel(logging.ERROR)
+logging.getLogger("absl").setLevel(logging.ERROR)
+
 SAMPLE_RATE = 8000
 MFCC_FRAMES = 40
 MAX_T = 128
-MODEL_PATH = "model.h5"
+MODEL_PATH = "model.keras"
 LABEL_MAP_PATH = "label_map.json"
 
 

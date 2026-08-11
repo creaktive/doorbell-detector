@@ -1,6 +1,7 @@
 """Train a 1D CNN to classify doorbell audio into downstairs / upstairs / environment."""
 
 import json
+import logging
 import os
 from collections import Counter
 
@@ -8,13 +9,16 @@ import numpy as np
 import librosa
 import tensorflow as tf
 
+tf.get_logger().setLevel(logging.ERROR)
+logging.getLogger("absl").setLevel(logging.ERROR)
+
 DATA_DIR = "data"
 SAMPLE_RATE = 8000
 MFCC_FRAMES = 40
 MAX_T = 128
 BATCH_SIZE = 32
 EPOCHS = 100
-MODEL_PATH = "model.h5"
+MODEL_PATH = "model.keras"
 
 
 def load_dataset(data_dir):
@@ -109,7 +113,7 @@ def main():
     model.save(MODEL_PATH)
     with open("label_map.json", "w") as f:
         json.dump(label_map, f)
-    print(f"Saved model to {MODEL_PATH} and label_map.json")
+    print(f"Saved model to {MODEL_PATH}")
 
 
 if __name__ == "__main__":
