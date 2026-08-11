@@ -9,7 +9,7 @@ import librosa
 import numpy as np
 import tensorflow as tf
 
-from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_PATH, SAMPLE_RATE
+from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_TFLITE_PATH, SAMPLE_RATE
 from model_io import mfcc_features
 
 def load_dataset(data_dir):
@@ -89,8 +89,23 @@ def main():
     best_epoch = np.argmax(history.history["val_accuracy"]) + 1
     print(f"Best epoch: {best_epoch}, val_accuracy: {history.history['val_accuracy'][best_epoch-1]:.4f}")
 
-    model.save(MODEL_PATH)
-    print(f"Saved model to {MODEL_PATH}")
+    # Convert to INT8 TFLite for LiteRT inference
+    print("Converting to INT8 TFLite...")
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+
+    with open(MODEL_TFLITE_PATH, "wb") as f:
+        f.write(tflite_model)
+    print(f"Saved {MODEL_TFLITE_PATH} ({len(tflite_model)} bytes)")
+
+    # Print tensor info for CompiledModel API
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    input_details = interpreter.get_input_details()[0]
+    output_details = interpreter.get_output_details()[0]
+    print(f"Input name:  '{input_details['name']}', shape={list(input_details['shape'])}, dtype={input_details['dtype']}")
+    print(f"Output name: '{output_details['name']}', shape={list(output_details['shape'])}, dtype={output_details['dtype']}")
 
 if __name__ == "__main__":
     main()

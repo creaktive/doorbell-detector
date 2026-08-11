@@ -11,11 +11,22 @@ A 1D CNN that classifies doorbell audio into three categories: **downstairs**, *
 
 ## Setup
 
+### Training (TensorFlow)
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install librosa numpy sounddevice tensorflow # or tf_nightly for nightly builds of TensorFlow/Keras
+pip install librosa numpy tensorflow
+```
+
+### Prediction (LiteRT)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install librosa numpy sounddevice ai-edge-litert
 ```
 
 ## Data Preparation
@@ -70,9 +81,9 @@ The training process:
 2. Extracts MFCC features (40 frames, padded/truncated to 128 time steps)
 3. Computes class weights to handle dataset imbalance
 4. Trains a 1D CNN with early stopping and learning rate reduction
-5. Saves the model to `doorbell.keras`
+5. Converts the trained model to INT8 quantized TFLite for LiteRT inference
 
-Output includes sample counts, class distribution, class weights, training progress, and final validation accuracy.
+Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell_int8.tflite` (~320 KB from ~1.2 MB uncompressed).
 
 ## Batch Prediction
 
@@ -120,16 +131,16 @@ Input(128, 40) → Conv1D(64, k=5, relu, same) → MaxPool(2)
                → Flatten → Dense(64, relu) → Dropout(0.3) → Softmax(3)
 ```
 
-**Total parameters:** 316,355 (1.21 MB)
+**Total parameters:** 316,355 (320 KB INT8 TFLite)
 
 ## Project Structure
 
 | File | Description |
 |------|-------------|
 | `config.py` | Shared constants (sample rate, model paths, labels) |
-| `model_io.py` | MFCC extraction and model loading utilities |
-| `train.py` | Training script - loads data, builds model, trains, saves |
-| `predict.py` | Batch prediction on `.wav` files |
-| `predict-live.py` | Live microphone classification |
+| `model_io.py` | MFCC extraction and LiteRT inference utilities |
+| `train.py` | Training script - loads data, builds model, trains, converts to INT8 TFLite |
+| `predict.py` | Batch prediction on `.wav` files using LiteRT |
+| `predict-live.py` | Live microphone classification using LiteRT |
 | `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters) |
 | `get-env-data.sh` | Download ESC-50 environmental sounds |

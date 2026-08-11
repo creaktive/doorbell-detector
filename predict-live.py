@@ -10,10 +10,9 @@ import time
 
 import numpy as np
 import sounddevice as sd
-import tensorflow as tf
 
 from config import BUFFER_SEC, CLASSIFY_HZ, SAMPLE_RATE
-from model_io import load_model, mfcc_features
+from model_io import load_model, mfcc_features, run_inference
 
 class AudioRing:
     """Lock-free-ish ring buffer for audio samples."""
@@ -52,7 +51,7 @@ class AudioRing:
 def classify(model, idx_to_label, audio: np.ndarray):
     """Run inference on audio samples, return (label, confidence)."""
     X = mfcc_features(audio)
-    probs = model.predict(X, verbose=0)[0]
+    probs = run_inference(model, X)
     idx = int(np.argmax(probs))
     return idx_to_label[idx], float(probs[idx])
 
