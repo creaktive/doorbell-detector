@@ -51,12 +51,12 @@ def build_model(n_classes):
     """Minimal 1D CNN on MFCCs: Conv1D → MaxPool × 2 → Flatten → Dense."""
     model = tf.keras.Sequential([
         tf.keras.layers.Input(shape=(MAX_T, MFCC_FRAMES)),
+        tf.keras.layers.Conv1D(32, 5, activation="relu", padding="same"),
+        tf.keras.layers.MaxPooling1D(2),
         tf.keras.layers.Conv1D(64, 5, activation="relu", padding="same"),
         tf.keras.layers.MaxPooling1D(2),
-        tf.keras.layers.Conv1D(128, 5, activation="relu", padding="same"),
-        tf.keras.layers.MaxPooling1D(2),
         tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(64, activation="relu"),
+        tf.keras.layers.Dense(32, activation="relu"),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.Dense(n_classes, activation="softmax"),
     ])
@@ -72,7 +72,7 @@ def main():
     print(f"Samples: {X.shape[0]}, Classes: {n_classes}, Labels: {LABELS}")
     print(f"Class distribution: {dict(counts)}")
 
-    # Compute class weights to handle imbalance (ponytail: inverse frequency weighting)
+    # Compute class weights to handle imbalance (inverse frequency weighting)
     total = len(y)
     class_weight = {}
     for c, count in counts.items():
@@ -100,10 +100,14 @@ def main():
     best_epoch = np.argmax(history.history["val_accuracy"]) + 1
     print(f"Best epoch: {best_epoch}, val_accuracy: {history.history['val_accuracy'][best_epoch-1]:.4f}")
 
-    # Convert to INT8 TFLite for LiteRT inference
-    print("Converting to INT8 TFLite...")
+    # Float16 quantization for Pi Zero: halves model size, faster ARM inference.
+    # Float16 avoids the int8 I/O complexity while still cutting memory bandwidth in half.
+    print("Converting to FP16 TFLite...")
+
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_types = [tf.float16]
+
     tflite_model = converter.convert()
 
     with open(MODEL_TFLITE_PATH, "wb") as f:

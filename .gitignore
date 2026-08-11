@@ -2,5 +2,3 @@
 __pycache__/
 data/**/*-aug-*.wav
 data/environment/[1-5]-*.wav
-doorbell.keras
-doorbell_int8.tflite

@@ -38,7 +38,7 @@ Run augmentation on your own doorbell recordings to increase dataset diversity:
 ./augment.sh
 ```
 
-This applies 8 transforms per `.wav` file (speed ±10%, pitch ±200 cents, volume ±30%, reverb, lowpass/highpass filtering) and saves them alongside the originals with `-aug-<transform>.wav` suffixes.
+This applies 20+ transforms per `.wav` file (speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding) and saves them alongside the originals with `-aug-<transform>.wav` suffixes.
 
 ### 2. Enrich with environmental sounds
 
@@ -80,9 +80,9 @@ The training process:
 2. Extracts MFCC features (40 frames, padded/truncated to 128 time steps)
 3. Computes class weights to handle dataset imbalance
 4. Trains a 1D CNN with early stopping and learning rate reduction
-5. Converts the trained model to INT8 quantized TFLite for LiteRT inference
+5. Converts the trained model to FP16 quantized TFLite for LiteRT inference
 
-Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell_int8.tflite` (~320 KB from ~1.2 MB uncompressed).
+Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell.tflite` (~173 KB).
 
 ## Batch Prediction
 
@@ -104,12 +104,12 @@ environment	100.00%	background-noise.wav
 ## Model Architecture
 
 ```
-Input(128, 40) → Conv1D(64, k=5, relu, same) → MaxPool(2)
-               → Conv1D(128, k=5, relu, same) → MaxPool(2)
-               → Flatten → Dense(64, relu) → Dropout(0.3) → Softmax(3)
+Input(128, 40) → Conv1D(32, k=5, relu, same) → MaxPool(2)
+               → Conv1D(64, k=5, relu, same) → MaxPool(2)
+               → Flatten → Dense(32, relu) → Dropout(0.3) → Softmax(3)
 ```
 
-**Total parameters:** 316,355 (320 KB INT8 TFLite)
+**Total parameters:** ~78,000 (173 KB FP16 TFLite)
 
 ## Project Structure
 
@@ -117,7 +117,8 @@ Input(128, 40) → Conv1D(64, k=5, relu, same) → MaxPool(2)
 |------|-------------|
 | `config.py` | Shared constants (sample rate, model paths, labels) |
 | `inferencer.py` | MFCC extraction and LiteRT inference utilities |
-| `train.py` | Training script - loads data, builds model, trains, converts to INT8 TFLite |
+| `train.py` | Training script - loads data, builds model, trains, converts to FP16 TFLite |
 | `predict.py` | Batch prediction on `.wav` files using LiteRT |
-| `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters) |
+| `predict_stream.py` | Real-time stream prediction via stdin (2s windows, 2 Hz trigger rate) |
+| `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters, echo, flanger, and more) |
 | `get-env-data.sh` | Download ESC-50 environmental sounds |
