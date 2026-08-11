@@ -2,6 +2,7 @@
 
 """Live classification from microphone at 8kHz using a trained 1D CNN."""
 
+import platform
 import signal
 import sys
 import threading
@@ -72,7 +73,12 @@ def main():
             print(f"[audio status] {_status}")
         ring.push(indata[:, 0])
 
-    stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback)
+    if platform.system() == "Linux":
+        device = "plug:dsnoop"
+    else:
+        device = None
+
+    stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, callback=callback, device=device)
     stream.start()
 
     # Graceful exit on Ctrl-C
