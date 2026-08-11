@@ -12,7 +12,8 @@ import numpy as np
 import sounddevice as sd
 
 from config import BUFFER_SEC, CLASSIFY_HZ, SAMPLE_RATE
-from model_io import load_model, mfcc_features, run_inference
+from inferencer import Inferencer
+
 
 class AudioRing:
     """Lock-free-ish ring buffer for audio samples."""
@@ -48,18 +49,15 @@ class AudioRing:
                 return np.concatenate([self.buf[start:], self.buf[:end]])
 
 
-def classify(model, idx_to_label, audio: np.ndarray):
+def classify(inferencer, audio: np.ndarray):
     """Run inference on audio samples, return (label, confidence)."""
-    X = mfcc_features(audio)
-    probs = run_inference(model, X)
-    idx = int(np.argmax(probs))
-    return idx_to_label[idx], float(probs[idx])
+    return inferencer.predict(audio)
 
 
 def main():
     # Load model and labels
     print("Loading model...")
-    model, idx_to_label = load_model()
+    inferencer = Inferencer()
 
     # Setup ring buffer and audio stream
     ring = AudioRing()
@@ -97,7 +95,7 @@ def main():
                 time.sleep(1 / CLASSIFY_HZ)
                 continue
 
-            label, conf = classify(model, idx_to_label, audio)
+            label, conf = classify(inferencer, audio)
             print(f"{label:<20s} ({conf:.2%})")
             time.sleep(1 / CLASSIFY_HZ)
     except KeyboardInterrupt:

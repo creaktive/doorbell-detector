@@ -138,7 +138,7 @@ Input(128, 40) → Conv1D(64, k=5, relu, same) → MaxPool(2)
 | File | Description |
 |------|-------------|
 | `config.py` | Shared constants (sample rate, model paths, labels) |
-| `model_io.py` | MFCC extraction and LiteRT inference utilities |
+| `inferencer.py` | MFCC extraction and LiteRT inference utilities |
 | `train.py` | Training script - loads data, builds model, trains, converts to INT8 TFLite |
 | `predict.py` | Batch prediction on `.wav` files using LiteRT |
 | `predict-live.py` | Live microphone classification using LiteRT |

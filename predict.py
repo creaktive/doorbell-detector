@@ -9,16 +9,13 @@ import librosa
 import numpy as np
 
 from config import SAMPLE_RATE
-from model_io import load_model, mfcc_features, run_inference
+from inferencer import Inferencer
 
 
-def predict(path, model, idx_to_label):
+def predict(path, inferencer):
     """Load wav, extract MFCCs, return (predicted_label, confidence)."""
     y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-    X = mfcc_features(y)
-    probs = run_inference(model, X)
-    idx = int(np.argmax(probs))
-    return idx_to_label[idx], float(probs[idx])
+    return inferencer.predict(y)
 
 
 def main():
@@ -26,13 +23,13 @@ def main():
         print(f"Usage: python predict.py <wav_file> [wav_file ...]")
         sys.exit(1)
 
-    model, idx_to_label = load_model()
+    inferencer = Inferencer()
 
     for path in sys.argv[1:]:
         if not os.path.isfile(path):
             print(f"File not found: {path}")
             continue
-        label, conf = predict(path, model, idx_to_label)
+        label, conf = predict(path, inferencer)
         print(f"{label}\t{conf:.2%}\t{os.path.basename(path)}")
 
 

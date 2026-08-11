@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_TFLITE_PATH, SAMPLE_RATE
-from model_io import mfcc_features
+from inferencer import mfcc_features
 
 def load_dataset(data_dir):
     """Walk data_dir, load wav files, extract MFCCs. Returns X, y."""
