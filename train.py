@@ -32,6 +32,17 @@ def load_dataset(data_dir):
             xs.append(X)
             ys.append(label_map[label])
 
+    # Silence produces an all-extreme-negative MFCC pattern (log(0)=-inf clipped).
+    # The model was never trained on this pattern and confidently misclassifies it as "upstairs".
+    # Add genuinely silent samples so the model learns silence = environment.
+    n_silence = len(xs) // 4  # supplement with 25% of dataset size in silence samples
+    window_samples = int(SAMPLE_RATE * 2)  # 2 seconds @ 8kHz = 16000
+    for _ in range(n_silence):
+        silence = np.zeros(window_samples, dtype="float32")
+        X = mfcc_features(silence)
+        xs.append(X)
+        ys.append(label_map["environment"])
+
     X = np.concatenate(xs).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
     y = np.array(ys, dtype="int32")
     return X, y
