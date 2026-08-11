@@ -32,7 +32,7 @@ def main():
             print(f"File not found: {path}")
             continue
         label, conf = predict(path, model, idx_to_label)
-        print(f"{os.path.basename(path)} → {label} ({conf:.2%})")
+        print(f"{label}\t{conf:.2%}\t{os.path.basename(path)}")
 
 
 if __name__ == "__main__":
