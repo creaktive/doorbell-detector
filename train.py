@@ -50,20 +50,36 @@ def load_dataset(data_dir):
     return X, y
 
 def build_model(n_classes):
-    """Minimal 1D CNN on MFCCs: Conv1D → MaxPool × 2 → Flatten → Dense."""
-    model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(MAX_T, MFCC_FRAMES)),
-        tf.keras.layers.Conv1D(32, 5, activation="relu", padding="same"),
-        tf.keras.layers.MaxPooling1D(2),
-        tf.keras.layers.Conv1D(64, 5, activation="relu", padding="same"),
-        tf.keras.layers.MaxPooling1D(2),
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(32, activation="relu"),
-        tf.keras.layers.Dropout(0.3),
-        tf.keras.layers.Dense(n_classes, activation="softmax"),
-    ])
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-                  loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+    """1D CNN with Residual Connections and GAP for lower error rate."""
+    inputs = tf.keras.layers.Input(shape=(MAX_T, MFCC_FRAMES))
+
+    # 1. Input Feature Normalization
+    x = tf.keras.layers.BatchNormalization()(inputs)
+
+    # 2. Block 1: Separable Conv + Residual connection
+    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.MaxPooling1D(2)(x)
+
+    # 3. Block 2
+    res = x
+    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.add([x, res]) # Skip connection
+    x = tf.keras.layers.MaxPooling1D(2)(x)
+
+    # 4. Global Average Pooling
+    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = tf.keras.layers.Dropout(0.2)(x)
+
+    outputs = tf.keras.layers.Dense(n_classes, activation="softmax")(x)
+
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"]
+    )
     return model
 
 def main():

@@ -77,7 +77,7 @@ python train.py
 
 The training process:
 1. Loads all `.wav` files from `data/{downstairs,upstairs,environment}/`
-2. Extracts MFCC features (40 frames, padded/truncated to 128 time steps)
+2. Extracts MFCC features (13 frames, padded/truncated to 128 time steps)
 3. Computes class weights to handle dataset imbalance
 4. Trains a 1D CNN with early stopping and learning rate reduction
 5. Converts the trained model to FP16 quantized TFLite for LiteRT inference
@@ -104,12 +104,13 @@ environment	100.00%	background-noise.wav
 ## Model Architecture
 
 ```
-Input(128, 40) → Conv1D(32, k=5, relu, same) → MaxPool(2)
-               → Conv1D(64, k=5, relu, same) → MaxPool(2)
-               → Flatten → Dense(32, relu) → Dropout(0.3) → Softmax(3)
+Input(128, 13) → BatchNorm
+               → SeparableConv1D(64, k=5, relu, same) → BatchNorm → MaxPool(2)
+               → SeparableConv1D(64, k=5, relu, same) → BatchNorm → Residual Add → MaxPool(2)
+               → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
-**Total parameters:** ~78,000 (173 KB FP16 TFLite)
+**Total parameters:** ~6,200 (25 KB FP16 TFLite)
 
 ## Project Structure
 

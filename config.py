@@ -5,6 +5,6 @@ DATA_DIR = "data"
 EPOCHS = 100
 LABELS = ["downstairs", "upstairs", "environment"]
 MAX_T = 128
-MFCC_FRAMES = 40
+MFCC_FRAMES = 13
 MODEL_TFLITE_PATH = "doorbell.tflite"
 SAMPLE_RATE = 8000
