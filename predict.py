@@ -6,7 +6,6 @@ import os
 import sys
 
 import librosa
-import numpy as np
 
 from config import SAMPLE_RATE
 from inferencer import Inferencer

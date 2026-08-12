@@ -1,3 +1,5 @@
+*.raw
+*.wav
 .venv/
 __pycache__/
 data/**/*-aug-*.wav

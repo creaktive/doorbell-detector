@@ -24,7 +24,6 @@ AUGMENTS=(
     # Volume & Dynamics
     "-aug-vol-0-7 vol 0.7"
     "-aug-vol-1-3 vol 1.3"
-    "-aug-reverb reverb 50 50 50"
     "-aug-overdrive overdrive 10 10"
     "-aug-compand compand 0.3,1 6:-70,-60,-20 -5 -90 0.2"
 

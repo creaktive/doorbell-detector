@@ -120,16 +120,13 @@ def build_model():
 def main():
     print("Loading dataset...")
     X, y = load_dataset(DATA_DIR)
-    n_classes = len(LABELS)
+    print(f"Samples: {X.shape[0]}, Classes: {len(LABELS)}, Labels: {LABELS}")
     counts = Counter(y.tolist())
-    print(f"Samples: {X.shape[0]}, Classes: {n_classes}, Labels: {LABELS}")
     print(f"Class distribution: {dict(counts)}")
 
     # Compute class weights to handle imbalance (inverse frequency weighting)
     total = len(y)
-    class_weight = {}
-    for c, count in counts.items():
-        class_weight[c] = total / (n_classes * count)
+    class_weight = {c: total / (len(LABELS) * cnt) for c, cnt in counts.items()}
     print(f"Class weights: {class_weight}")
 
     # Shuffle deterministically so validation split isn't biased by file order
