@@ -1,22 +1,10 @@
 """Shared model I/O utilities for doorbell scripts."""
 
-import librosa
 import numpy as np
 
 from ai_edge_litert.compiled_model import CompiledModel
 
-from config import LABELS, MAX_T, MFCC_FRAMES, MODEL_TFLITE_PATH, SAMPLE_RATE
-
-
-def mfcc_features(audio: np.ndarray) -> np.ndarray:
-    """Extract MFCCs from raw audio and return shaped tensor (1, MAX_T, MFCC_FRAMES)."""
-    mfcc = librosa.feature.mfcc(y=audio, sr=SAMPLE_RATE, n_mfcc=MFCC_FRAMES)
-    if mfcc.shape[1] < MAX_T:
-        pad = np.zeros((MFCC_FRAMES, MAX_T - mfcc.shape[1]))
-        mfcc = np.hstack([mfcc, pad])
-    else:
-        mfcc = mfcc[:, :MAX_T]
-    return mfcc.astype("float32").T.reshape(1, MAX_T, MFCC_FRAMES)
+from config import LABELS, MODEL_TFLITE_PATH
 
 
 class Inferencer:
@@ -29,7 +17,7 @@ class Inferencer:
         self.input_name = sigs[self.sig_key]["inputs"][0]
         self.output_name = sigs[self.sig_key]["outputs"][0]
 
-        # Output shape is always (1, num_classes) — derived from LABELS since
+        # Output shape is always (1, num_classes) - derived from LABELS since
         # get_output_tensor_details() doesn't exist on Linux/RPi builds of ai-edge-litert
         self.output_shape = [1, len(LABELS)]
 
@@ -52,9 +40,10 @@ class Inferencer:
         return result.reshape(self.output_shape)[0]
 
     def predict(self, audio):
-        """Extract features and run inference. Returns (label, confidence)."""
-        X = mfcc_features(audio)
+        """Run inference on raw PCM audio (float32, 16000 samples @ 8kHz). Returns (label, confidence)."""
+        if len(audio) < 16000:
+            audio = np.concatenate([audio, np.zeros(16000 - len(audio), dtype="float32")])
+        X = audio[:16000].astype("float32").reshape(1, -1)
         probs = self.run(X)
         idx = int(np.argmax(probs))
         return self.idx_to_label[idx], float(probs[idx])
-

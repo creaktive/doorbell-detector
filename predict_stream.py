@@ -10,7 +10,7 @@ from inferencer import Inferencer
 
 
 WINDOW = 16000   # 2 seconds @ 8kHz
-STRIDE = 4000    # trigger detection rate 2 Hz
+STRIDE = 800     # trigger detection rate 10 Hz @ 8kHz
 BUF_SIZE = 32768 # read 32KB chunks from stdin (4096 int16, ~0.5s)
 
 

@@ -13,7 +13,7 @@ from inferencer import Inferencer
 
 
 def predict(path, inferencer):
-    """Load wav, extract MFCCs, return (predicted_label, confidence)."""
+    """Load wav and run inference. Returns (predicted_label, confidence)."""
     y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
     return inferencer.predict(y)
 

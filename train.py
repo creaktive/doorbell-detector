@@ -11,14 +11,17 @@ import tensorflow as tf
 
 from ai_edge_litert.compiled_model import CompiledModel
 
-from config import BATCH_SIZE, DATA_DIR, EPOCHS, LABELS, MAX_T, MFCC_FRAMES, MODEL_TFLITE_PATH, SAMPLE_RATE
-from inferencer import mfcc_features
+from config import (
+    BATCH_SIZE, DATA_DIR, EPOCHS, FRAME_LENGTH, FRAME_STEP, LABELS,
+    MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE,
+)
 
 def load_dataset(data_dir):
-    """Walk data_dir, load wav files, extract MFCCs. Returns X, y."""
+    """Walk data_dir, load wav files as raw PCM. Returns X, y."""
     label_map = {name: i for i, name in enumerate(LABELS)}
 
     xs, ys = [], []
+    window_samples = int(SAMPLE_RATE * 2)  # 2 seconds @ 8kHz = 16000
     for label in sorted(os.listdir(data_dir)):
         if label not in label_map:
             continue
@@ -28,57 +31,89 @@ def load_dataset(data_dir):
         for fname in sorted(os.listdir(label_dir)):
             if not fname.endswith(".wav"):
                 continue
-            path = os.path.join(label_dir, fname)
+            path = os.path.join(data_dir, label, fname)
             y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-            X = mfcc_features(y)
-            xs.append(X)
+            # Pad or truncate to fixed 2-second window
+            if len(y) < window_samples:
+                pad = np.zeros(window_samples - len(y), dtype="float32")
+                y = np.concatenate([y, pad])
+            else:
+                y = y[:window_samples]
+            xs.append(y.astype("float32"))
             ys.append(label_map[label])
 
-    # Silence produces an all-extreme-negative MFCC pattern (log(0)=-inf clipped).
-    # The model was never trained on this pattern and confidently misclassifies it as "upstairs".
+    # Silence produces a flat-zero spectrogram pattern.
+    # The model was never trained on this and misclassifies it as "upstairs".
     # Add genuinely silent samples so the model learns silence = environment.
-    n_silence = len(xs) // 4  # supplement with 25% of dataset size in silence samples
-    window_samples = int(SAMPLE_RATE * 2)  # 2 seconds @ 8kHz = 16000
+    n_silence = len(xs) // 4
     for _ in range(n_silence):
-        silence = np.zeros(window_samples, dtype="float32")
-        X = mfcc_features(silence)
-        xs.append(X)
+        xs.append(np.zeros(window_samples, dtype="float32"))
         ys.append(label_map["environment"])
 
-    X = np.concatenate(xs).astype("float32")  # (N, MAX_T, MFCC_FRAMES)
+    X = np.array(xs, dtype="float32")  # (N, WINDOW_SAMPLES) raw PCM
     y = np.array(ys, dtype="int32")
     return X, y
 
-def build_model(n_classes):
-    """1D CNN with Residual Connections and GAP for lower error rate."""
-    inputs = tf.keras.layers.Input(shape=(MAX_T, MFCC_FRAMES))
+class AudioFrontend(tf.keras.layers.Layer):
+    """Computes Mel-Spectrograms directly inside the TF graph."""
 
-    # 1. Input Feature Normalization
-    x = tf.keras.layers.BatchNormalization()(inputs)
+    def __init__(self, sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH, frame_step=FRAME_STEP, max_t=MAX_T, **kwargs):
+        super().__init__(**kwargs)
+        self.frame_length = frame_length
+        self.frame_step = frame_step
+        self.max_t = max_t
+        self.n_mels = n_mels
+        # Precompute the exact number of samples needed for exactly max_t frames
+        self.target_samples = (self.max_t - 1) * self.frame_step + self.frame_length
+        self.linear_to_mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
+            num_mel_bins=n_mels,
+            num_spectrogram_bins=frame_length // 2 + 1,
+            sample_rate=sample_rate,
+            lower_edge_hertz=400.0, # doorbell tones are all above this
+            upper_edge_hertz=4000.0,
+        )
 
-    # 2. Block 1: Separable Conv + Residual connection
+    def call(self, raw_audio):
+        # Pad each sample in the batch to target_samples (batch is already 16000)
+        pad_amount = self.target_samples - tf.shape(raw_audio)[1]
+        audio = tf.concat([raw_audio, tf.zeros((tf.shape(raw_audio)[0], tf.maximum(0, pad_amount)), dtype=tf.float32)], axis=1)
+
+        stft = tf.signal.stft(audio, frame_length=self.frame_length, frame_step=self.frame_step)
+        spectrogram = tf.abs(stft)
+        mel_spectrogram = tf.tensordot(spectrogram, self.linear_to_mel_weight_matrix, 1)
+        return tf.math.log(mel_spectrogram + 1e-6)
+
+
+def build_model():
+    """End-to-end model: raw audio → Mel-spectrogram → Residual 1D CNN."""
+    inputs = tf.keras.layers.Input(shape=(SAMPLE_RATE * 2,), dtype=tf.float32, name="audio")
+
+    x = AudioFrontend(sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH,
+                      frame_step=FRAME_STEP, max_t=MAX_T)(inputs)
+    # x shape: (batch, MAX_T, N_MELS)
+
+    x = tf.keras.layers.BatchNormalization()(x)
+
     x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.MaxPooling1D(2)(x)
 
-    # 3. Block 2
     res = x
     x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
     x = tf.keras.layers.BatchNormalization()(x)
-    x = tf.keras.layers.add([x, res]) # Skip connection
+    x = tf.keras.layers.add([x, res])
     x = tf.keras.layers.MaxPooling1D(2)(x)
 
-    # 4. Global Average Pooling
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
     x = tf.keras.layers.Dropout(0.2)(x)
 
-    outputs = tf.keras.layers.Dense(n_classes, activation="softmax")(x)
+    outputs = tf.keras.layers.Dense(len(LABELS), activation="softmax")(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
         loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"]
+        metrics=["accuracy"],
     )
     return model
 
@@ -103,7 +138,7 @@ def main():
     rng.shuffle(indices)
     X, y = X[indices], y[indices]
 
-    model = build_model(n_classes)
+    model = build_model()
     model.summary()
 
     callbacks = [

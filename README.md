@@ -1,6 +1,6 @@
 # Doorbell Detector
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Uses MFCC features extracted at 8kHz sample rate.
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Mel-spectrograms are computed inside the TFLite graph via STFT + Mel-filterbank. Accepts raw PCM audio at 8kHz sample rate.
 
 ## Requirements
 
@@ -25,8 +25,10 @@ pip install librosa numpy tensorflow
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install librosa numpy ai-edge-litert
+pip install numpy ai-edge-litert
 ```
+
+The TFLite model is self-contained - it accepts raw PCM audio and returns classification. No feature extraction libraries needed at inference time.
 
 ## Data Preparation
 
@@ -76,13 +78,13 @@ python train.py
 ```
 
 The training process:
-1. Loads all `.wav` files from `data/{downstairs,upstairs,environment}/`
-2. Extracts MFCC features (13 frames, padded/truncated to 128 time steps)
+1. Loads all `.wav` files from `data/{downstairs,upstairs,environment}/` as raw PCM audio (2s @ 8kHz windows)
+2. Computes Mel-spectrograms inside the TF graph via STFT + Mel-filterbank
 3. Computes class weights to handle dataset imbalance
-4. Trains a 1D CNN with early stopping and learning rate reduction
+4. Trains an end-to-end model with early stopping and learning rate reduction
 5. Converts the trained model to FP16 quantized TFLite for LiteRT inference
 
-Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell.tflite` (~173 KB).
+Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell.tflite` (~47 KB).
 
 ## Batch Prediction
 
@@ -104,22 +106,22 @@ environment	100.00%	background-noise.wav
 ## Model Architecture
 
 ```
-Input(128, 13) → BatchNorm
-               → SeparableConv1D(64, k=5, relu, same) → BatchNorm → MaxPool(2)
-               → SeparableConv1D(64, k=5, relu, same) → BatchNorm → Residual Add → MaxPool(2)
-               → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
+Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) mel spectrogram
+                     → BatchNorm → SeparableConv1D(64, k=5) → BatchNorm → MaxPool(2)
+                     → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → MaxPool(2)
+                     → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
-**Total parameters:** ~6,200 (25 KB FP16 TFLite)
+**Total parameters:** ~8,200 (~47 KB FP16 TFLite)
 
 ## Project Structure
 
 | File | Description |
 |------|-------------|
-| `config.py` | Shared constants (sample rate, model paths, labels) |
-| `inferencer.py` | MFCC extraction and LiteRT inference utilities |
-| `train.py` | Training script - loads data, builds model, trains, converts to FP16 TFLite |
+| `config.py` | Shared constants (sample rate, model paths, labels, STFT params) |
+| `inferencer.py` | LiteRT inference - accepts raw PCM audio directly |
+| `train.py` | Training script - loads raw audio, builds end-to-end model with in-graph Mel-spectrogram extraction, trains, converts to FP16 TFLite |
 | `predict.py` | Batch prediction on `.wav` files using LiteRT |
-| `predict_stream.py` | Real-time stream prediction via stdin (2s windows, 2 Hz trigger rate) |
+| `predict_stream.py` | Real-time stream prediction via stdin (2s windows, 10 Hz trigger rate) |
 | `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters, echo, flanger, and more) |
 | `get-env-data.sh` | Download ESC-50 environmental sounds |
