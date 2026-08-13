@@ -9,7 +9,7 @@ The entire feature extraction pipeline — STFT + Mel-filterbank — lives insid
 ## Data Flow
 
 ```
-Training:  wav → librosa.load() → raw PCM (16000 samples) → AudioFrontend layer → Mel-spectrogram → CNN → class
+Training:  wav → librosa.load() → raw PCM → _window_audio() (ESC-50 split into 2s chunks, doorbell padded/truncated to 16000) → AudioFrontend layer → Mel-spectrogram → CNN → class
 Inference: wav → librosa.load() [predict.py only] → raw PCM → TFLite model → class
 Stream:    stdin (int16 @ 8kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (10 frames) → cooldown (10s) → Pushsafer notification
 ```

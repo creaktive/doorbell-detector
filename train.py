@@ -16,6 +16,32 @@ from config import (
     MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE,
 )
 
+def _window_audio(audio, fname, window_samples):
+    """Yield fixed-size windows from raw PCM.
+
+    ESC-50 files (fname[0].isdigit) are 5s @8kHz → split into non-overlapping
+    2s chunks with a zero-padded remainder if needed.
+    Doorbell files (< 2s) are padded or truncated to one window.
+    """
+    if fname[0].isdigit():  # ponytail: ESC-50 detection by filename prefix, not length
+        n_chunks = len(audio) // window_samples
+        for i in range(n_chunks):
+            yield audio[i * window_samples : (i + 1) * window_samples].astype("float32")
+        rem_len = len(audio) % window_samples
+        if rem_len > 0:
+            chunk = np.zeros(window_samples, dtype="float32")
+            chunk[:rem_len] = audio[-rem_len:].astype("float32")
+            yield chunk
+    else:
+        # Pad or truncate to one window (doorbell files are always < 2s)
+        if len(audio) < window_samples:
+            pad = np.zeros(window_samples - len(audio), dtype="float32")
+            audio = np.concatenate([audio, pad])
+        else:
+            audio = audio[:window_samples]
+        yield audio.astype("float32")
+
+
 def load_dataset(data_dir):
     """Walk data_dir, load wav files as raw PCM. Returns X, y."""
     label_map = {name: i for i, name in enumerate(LABELS)}
@@ -33,14 +59,10 @@ def load_dataset(data_dir):
                 continue
             path = os.path.join(data_dir, label, fname)
             y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-            # Pad or truncate to fixed 2-second window
-            if len(y) < window_samples:
-                pad = np.zeros(window_samples - len(y), dtype="float32")
-                y = np.concatenate([y, pad])
-            else:
-                y = y[:window_samples]
-            xs.append(y.astype("float32"))
-            ys.append(label_map[label])
+
+            for chunk in _window_audio(y, fname, window_samples):
+                xs.append(chunk)
+                ys.append(label_map[label])
 
     # Silence produces a flat-zero spectrogram pattern.
     # The model was never trained on this and misclassifies it as "upstairs".
