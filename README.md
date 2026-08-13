@@ -1,6 +1,16 @@
 # Doorbell Detector
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Mel-spectrograms are computed inside the TFLite graph via STFT + Mel-filterbank. Accepts raw PCM audio at 8kHz sample rate.
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~47 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
+
+## Quick Start
+
+```bash
+# Classify wav files
+python predict.py doorbell-downstairs-1.wav background-noise.wav
+
+# Stream live audio from stdin (raw 16-bit PCM @ 8kHz mono)
+cat audio.raw | python predict_stream.py
+```
 
 ## Requirements
 
@@ -10,16 +20,16 @@ A 1D CNN that classifies doorbell audio into three categories: **downstairs**, *
 
 ## Setup
 
-### Training (TensorFlow)
+### Training Environment
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install librosa numpy tensorflow
+pip install librosa numpy tensorflow ai-edge-litert
 ```
 
-### Prediction (LiteRT)
+### Inference Environment (Pi Zero, etc.)
 
 ```bash
 python3 -m venv .venv
@@ -28,65 +38,46 @@ pip install --upgrade pip
 pip install numpy ai-edge-litert
 ```
 
-The TFLite model is self-contained - it accepts raw PCM audio and returns classification. No feature extraction libraries needed at inference time.
-
 ## Data Preparation
 
-### 1. Augment existing data
+Place `.wav` files into `data/{downstairs,upstairs,environment}/`:
 
-Run augmentation on your own doorbell recordings to increase dataset diversity:
-
-```bash
-./augment.sh
+```
+data/
+├── downstairs/       # doorbell-downstairs-*.wav
+├── environment/      # background noise (ESC-50 or your own)
+└── upstairs/         # doorbell-upstairs-*.wav
 ```
 
-This applies 20+ transforms per `.wav` file (speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding) and saves them alongside the originals with `-aug-<transform>.wav` suffixes.
+### Augment your recordings
 
-### 2. Enrich with environmental sounds
+Apply 20 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.):
 
-Download background noise samples from [ESC-50](https://github.com/karoldvl/ESC-50):
+```bash
+./augment.sh [data_dir]
+```
+
+Augmented files get a `-aug-<name>.wav` suffix and are gitignored.
+
+### Download environmental sounds
 
 ```bash
 ./get-env-data.sh
 ```
 
-This downloads ESC-50 audio files into `data/environment/`.
-
-### Directory structure
-
-After data preparation, your dataset should look like:
-
-```
-data/
-├── downstairs/
-│   ├── doorbell-downstairs-1.wav
-│   └── ...
-├── environment/
-│   ├── esc50_0.wav
-│   └── ...
-└── upstairs/
-    ├── doorbell-upstairs-1.wav
-    └── ...
-```
+Downloads ESC-50 background noise into `data/environment/`.
 
 ## Training
-
-Train the model on your prepared dataset:
 
 ```bash
 python train.py
 ```
 
-The training process:
-1. Loads all `.wav` files from `data/{downstairs,upstairs,environment}/` as raw PCM audio (2s @ 8kHz windows)
-2. Computes Mel-spectrograms inside the TF graph via STFT + Mel-filterbank
-3. Computes class weights to handle dataset imbalance
-4. Trains an end-to-end model with early stopping and learning rate reduction
-5. Converts the trained model to FP16 quantized TFLite for LiteRT inference
+Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~47 KB FP16).
 
-Output includes sample counts, class distribution, class weights, training progress, final validation accuracy, and tensor details for the exported model. The converted model is saved as `doorbell.tflite` (~47 KB).
+## Usage
 
-## Batch Prediction
+### Batch Prediction
 
 Classify one or more `.wav` files:
 
@@ -94,7 +85,7 @@ Classify one or more `.wav` files:
 python predict.py file1.wav [file2.wav ...]
 ```
 
-Output is tab-separated for easy parsing: `label\tconfidence\tfilename`
+Output is tab-separated: `label\tconfidence\tfilename`
 
 Example:
 ```
@@ -103,25 +94,16 @@ upstairs	97.20%	doorbell-upstairs-12.wav
 environment	100.00%	background-noise.wav
 ```
 
-## Model Architecture
+### Real-time Stream Prediction
 
-```
-Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) mel spectrogram
-                     → BatchNorm → SeparableConv1D(64, k=5) → BatchNorm → MaxPool(2)
-                     → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → MaxPool(2)
-                     → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
+```bash
+cat audio.raw | python predict_stream.py
 ```
 
-**Total parameters:** ~8,200 (~47 KB FP16 TFLite)
+Output on confirmed detection only: `YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL`
 
-## Project Structure
-
-| File | Description |
-|------|-------------|
-| `config.py` | Shared constants (sample rate, model paths, labels, STFT params) |
-| `inferencer.py` | LiteRT inference - accepts raw PCM audio directly |
-| `train.py` | Training script - loads raw audio, builds end-to-end model with in-graph Mel-spectrogram extraction, trains, converts to FP16 TFLite |
-| `predict.py` | Batch prediction on `.wav` files using LiteRT |
-| `predict_stream.py` | Real-time stream prediction via stdin (2s windows, 10 Hz trigger rate) |
-| `augment.sh` | Audio augmentation with sox (speed, pitch, volume, reverb, filters, echo, flanger, and more) |
-| `get-env-data.sh` | Download ESC-50 environmental sounds |
+Detection logic:
+- Predictions below 90% confidence are treated as `"environment"`
+- Requires 10 consecutive frames with the same label (~1 second) before triggering
+- 10-second cooldown after each detection
+- Optional Pushsafer notifications via `PUSHSAFER_KEY` env var

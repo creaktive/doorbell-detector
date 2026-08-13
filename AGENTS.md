@@ -11,16 +11,16 @@ The entire feature extraction pipeline — STFT + Mel-filterbank — lives insid
 ```
 Training:  wav → librosa.load() → raw PCM (16000 samples) → AudioFrontend layer → Mel-spectrogram → CNN → class
 Inference: wav → librosa.load() [predict.py only] → raw PCM → TFLite model → class
-Stream:    stdin (int16 @ 8kHz) → float32 normalize → TFLite model → class
+Stream:    stdin (int16 @ 8kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (10 frames) → cooldown (10s) → Pushsafer notification
 ```
 
 ## Architecture
 
 ```
 Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) mel spectrogram
-                     → BatchNorm → SeparableConv1D(64, k=5) → BatchNorm → MaxPool(2)
-                     → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → MaxPool(2)
-                     → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
+                      → BatchNorm → SeparableConv1D(64, k=5) → BatchNorm → MaxPool(2)
+                      → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → MaxPool(2)
+                      → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
 **Total parameters:** ~8,200 (~47 KB FP16 TFLite)
@@ -41,7 +41,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) me
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `predict.py` | Batch prediction on `.wav` files. Uses librosa only for wav I/O, delegates to Inferencer | librosa, ai-edge-litert |
-| `predict_stream.py` | Real-time stream prediction via stdin (16-bit PCM @ 8kHz mono). 2s windows, 10 Hz trigger rate, sliding stride of 800 samples (~100ms overlap) | numpy, ai-edge-litert |
+| `predict_stream.py` | Real-time stream prediction via stdin (16-bit PCM @ 8kHz mono). 2s windows, 10 Hz trigger rate, sliding stride of 800 samples (~100ms overlap), confidence floor <90% → "environment", streak confirmation (10 frames = ~1s), cooldown mode (10s after detection), Pushsafer notifications | numpy, ai-edge-litert, stdlib (threading, urllib) |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding. Applies 20 transforms per file | bash, sox, find |
 | `get-env-data.sh` | Downloads ESC-50 environmental sounds into `data/environment/` | curl, bsdtar |
 
@@ -80,6 +80,7 @@ Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These 
 ### Dependencies by env
 - **Training**: librosa, numpy, tensorflow (plus ai-edge-litert for tensor inspection post-conversion)
 - **Inference**: numpy, ai-edge-litert only — no librosa, no feature extraction libs
+- **Stream** (`predict_stream.py`): stdlib `threading`, `urllib.request`, `urllib.parse` for Pushsafer notifications (daemon thread, 3s timeout, silent failure)
 
 ## Running
 
@@ -93,7 +94,7 @@ python predict.py file1.wav [file2.wav ...]
 
 # Real-time stream from stdin (raw 16-bit PCM @ 8kHz mono)
 cat audio.raw | python predict_stream.py
-# Output: label\tconfidence per detection window (~10 Hz)
+# Output: YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL on confirmed detection (~once per 10s cooldown)
 ```
 
 ## Augmentation
@@ -113,3 +114,7 @@ data/environment/[1-5]-*.wav   # raw ESC-50 files (downloaded by script)
 ## Model File
 
 `doorbell.tflite` — FP16 quantized, ~47 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
+
+## Specific instructions for agents
+
+When the model is changed, be sure to update README.md and AGENTS.md accordingly. Be extra careful with model file size and the number of parmeters.
