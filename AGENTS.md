@@ -58,10 +58,9 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) me
 - The Inferencer handles padding to 16000 samples internally if needed.
 
 ### Training specifics
-- Deterministic shuffle with `np.random.default_rng(42)` so validation split isn't biased by file order.
+- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants and ESC-50 chunks from the same file never leak across train/val boundaries. Silence samples use a shared `__silence__` id so they stay together.
 - Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).
-- Validation split: 15%. Training data is NOT shuffled again after splitting (`shuffle=False` in `model.fit`).
 
 ### Platform quirks
 - `get_output_tensor_details()` doesn't exist on Linux/RPi builds of `ai-edge-litert`. Output shape is derived from `LABELS` instead.

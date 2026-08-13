@@ -23,7 +23,7 @@ def _window_audio(audio, fname, window_samples):
     2s chunks with a zero-padded remainder if needed.
     Doorbell files (< 2s) are padded or truncated to one window.
     """
-    if fname[0].isdigit():  # ponytail: ESC-50 detection by filename prefix, not length
+    if fname[0].isdigit(): # ESC-50 detection by filename prefix
         n_chunks = len(audio) // window_samples
         for i in range(n_chunks):
             yield audio[i * window_samples : (i + 1) * window_samples].astype("float32")
@@ -43,10 +43,10 @@ def _window_audio(audio, fname, window_samples):
 
 
 def load_dataset(data_dir):
-    """Walk data_dir, load wav files as raw PCM. Returns X, y."""
+    """Walk data_dir, load wav files as raw PCM. Returns X, y, file_ids."""
     label_map = {name: i for i, name in enumerate(LABELS)}
 
-    xs, ys = [], []
+    xs, ys, fids = [], [], []
     window_samples = int(SAMPLE_RATE * 2)  # 2 seconds @ 8kHz = 16000
     for label in sorted(os.listdir(data_dir)):
         if label not in label_map:
@@ -60,9 +60,12 @@ def load_dataset(data_dir):
             path = os.path.join(data_dir, label, fname)
             y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
 
+            # strip -aug-* suffix so augmented variants group with their source file
+            base_fname = fname.split('-aug-')[0]
             for chunk in _window_audio(y, fname, window_samples):
                 xs.append(chunk)
                 ys.append(label_map[label])
+                fids.append(base_fname)
 
     # Silence produces a flat-zero spectrogram pattern.
     # The model was never trained on this and misclassifies it as "upstairs".
@@ -71,15 +74,16 @@ def load_dataset(data_dir):
     for _ in range(n_silence):
         xs.append(np.zeros(window_samples, dtype="float32"))
         ys.append(label_map["environment"])
+        fids.append("__silence__")
 
     X = np.array(xs, dtype="float32")  # (N, WINDOW_SAMPLES) raw PCM
     y = np.array(ys, dtype="int32")
-    return X, y
+    return X, y, np.array(fids, dtype="U256")
 
 class AudioFrontend(tf.keras.layers.Layer):
     """Computes Mel-Spectrograms directly inside the TF graph."""
 
-    def __init__(self, sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH, frame_step=FRAME_STEP, max_t=MAX_T, **kwargs):
+    def __init__(self, sample_rate, n_mels, frame_length, frame_step, max_t, **kwargs):
         super().__init__(**kwargs)
         self.frame_length = frame_length
         self.frame_step = frame_step
@@ -92,7 +96,7 @@ class AudioFrontend(tf.keras.layers.Layer):
             num_spectrogram_bins=frame_length // 2 + 1,
             sample_rate=sample_rate,
             lower_edge_hertz=400.0, # doorbell tones are all above this
-            upper_edge_hertz=4000.0,
+            upper_edge_hertz=sample_rate / 2.0
         )
 
     def call(self, raw_audio):
@@ -141,7 +145,7 @@ def build_model():
 
 def main():
     print("Loading dataset...")
-    X, y = load_dataset(DATA_DIR)
+    X, y, file_ids = load_dataset(DATA_DIR)
     print(f"Samples: {X.shape[0]}, Classes: {len(LABELS)}, Labels: {LABELS}")
     counts = Counter(y.tolist())
     print(f"Class distribution: {dict(counts)}")
@@ -151,11 +155,18 @@ def main():
     class_weight = {c: total / (len(LABELS) * cnt) for c, cnt in counts.items()}
     print(f"Class weights: {class_weight}")
 
-    # Shuffle deterministically so validation split isn't biased by file order
+    # Group-aware train/val split - prevents data leakage from augmented variants
+    # and ESC-50 chunks splitting across buckets.
     rng = np.random.default_rng(42)
-    indices = np.arange(len(X))
-    rng.shuffle(indices)
-    X, y = X[indices], y[indices]
+    unique_files = sorted(set(file_ids))
+    rng.shuffle(unique_files)
+    n_val = max(1, int(len(unique_files) * 0.15))
+    val_files = set(unique_files[-n_val:])
+
+    train_mask = np.array([fid not in val_files for fid in file_ids])
+    X_train, y_train = X[train_mask], y[train_mask]
+    X_val, y_val = X[~train_mask], y[~train_mask]
+    print(f"Train: {X_train.shape[0]}, Val: {X_val.shape[0]} (from {len(unique_files)} unique source files)")
 
     model = build_model()
     model.summary()
@@ -165,8 +176,8 @@ def main():
         tf.keras.callbacks.ReduceLROnPlateau("val_loss", factor=0.5, patience=5, min_lr=1e-6),
     ]
 
-    history = model.fit(X, y, batch_size=BATCH_SIZE, epochs=EPOCHS, validation_split=0.15,
-                        shuffle=False, class_weight=class_weight, callbacks=callbacks)
+    history = model.fit(X_train, y_train, batch_size=BATCH_SIZE, epochs=EPOCHS,
+                        validation_data=(X_val, y_val), class_weight=class_weight, callbacks=callbacks)
 
     # Report final val accuracy
     best_epoch = np.argmax(history.history["val_accuracy"]) + 1
