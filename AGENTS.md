@@ -9,7 +9,7 @@ The entire feature extraction pipeline — STFT + Mel-filterbank — lives insid
 ## Data Flow
 
 ```
-Training:  wav → librosa.load() → raw PCM → _window_audio() (random 1s slice, no padding) → AudioFrontend layer → Mel-spectrogram → CNN → class
+Training:  wav → librosa.load(mono=False) → each channel yields one sample → random 1s slice → AudioFrontend layer → Mel-spectrogram → CNN → class
 Inference: wav → raw PCM → TFLite model → class
 Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (10 frames) → cooldown (10s) → Pushsafer notification
 ```
@@ -23,7 +23,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
-**Total parameters:** ~8,200 (~25–30 KB FP16 TFLite)
+**Total parameters:** ~8,200 (~57 KB FP16 TFLite)
 
 ### Key design decisions
 - **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–16000 Hz (doorbell tones are all above 400 Hz).
@@ -42,12 +42,13 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (10 frames = ~1s), cooldown mode (10s after detection), Pushsafer notifications | numpy, ai-edge-litert, stdlib (threading, urllib) |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding. Applies 20 transforms per file | bash, sox, find |
 | `get-env-data.sh` | Downloads ESC-50 environmental sounds into `data/environment/` | curl, bsdtar |
+| `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` (16-bit PCM @ 16kHz mono) | bash, sox |
 
 ## Conventions & Gotchas
 
 ### Audio format
-- All audio is **16kHz mono**. Training loads with `librosa.load(path, sr=16000, mono=True)`.
-- Fixed 1-second windows: random offset slice from each file (no padding). Files shorter than 1s raise an error.
+- All audio is **16kHz**. Training loads with `librosa.load(path, sr=16000, mono=False)` — multi-channel files yield one sample per channel.
+- Fixed 1-second windows: random offset slice from each channel (no padding). Files shorter than 1s raise an error.
 - Stream input (`detect.py`) is **16-bit signed int** normalized to float32 by dividing by 32768.
 
 ### Model I/O
@@ -56,7 +57,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 - The Inferencer handles padding to 16000 samples internally if needed.
 
 ### Training specifics
-- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each file yields exactly one random 1s window during training.
+- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields exactly one random 1s window during training.
 - Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).
 
@@ -106,7 +107,7 @@ data/environment/[1-5]-*.wav   # raw ESC-50 files (downloaded by script)
 
 ## Model File
 
-`doorbell.tflite` — FP16 quantized, ~25–30 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
+`doorbell.tflite` — FP16 quantized, ~57 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
 
 ## Specific instructions for agents
 

@@ -20,13 +20,22 @@ from config import (
 rng = np.random.default_rng(42)
 
 
-def load_audio(path):
-    """Yield a single 1s window from wav file via random offset."""
-    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+def _window(audio):
+    """Take a random 1s window from the audio array."""
     if len(audio) < WINDOW_SAMPLES:
-        raise ValueError(f"Audio too short ({len(audio)} samples) in {path}")
+        raise ValueError(f"Audio too short ({len(audio)} samples)")
     offset = rng.integers(0, len(audio) - WINDOW_SAMPLES + 1)
-    yield audio[offset:offset + WINDOW_SAMPLES].astype("float32")
+    return audio[offset:offset + WINDOW_SAMPLES].astype("float32")
+
+
+def load_audio(path):
+    """Yield a single 1s window from each channel of the wav file via random offset."""
+    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=False)
+    if audio.ndim == 1:
+        yield _window(audio)
+    else:
+        for ch in audio:
+            yield _window(ch)
 
 
 def load_dataset(data_dir):
