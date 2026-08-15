@@ -4,7 +4,7 @@ import numpy as np
 
 from ai_edge_litert.compiled_model import CompiledModel
 
-from config import LABELS, MODEL_TFLITE_PATH
+from config import LABELS, MODEL_TFLITE_PATH, WINDOW_SAMPLES
 
 
 class Inferencer:
@@ -40,10 +40,10 @@ class Inferencer:
         return result.reshape(self.output_shape)[0]
 
     def predict(self, audio):
-        """Run inference on raw PCM audio (float32, 16000 samples @ 8kHz). Returns (label, confidence)."""
-        if len(audio) < 16000:
-            audio = np.concatenate([audio, np.zeros(16000 - len(audio), dtype="float32")])
-        X = audio[:16000].astype("float32").reshape(1, -1)
+        """Run inference on raw PCM audio (float32, WINDOW_SAMPLES samples @ 16kHz). Returns (label, confidence)."""
+        if len(audio) < WINDOW_SAMPLES:
+            audio = np.concatenate([audio, np.zeros(WINDOW_SAMPLES - len(audio), dtype="float32")])
+        X = audio[:WINDOW_SAMPLES].astype("float32").reshape(1, -1)
         probs = self.run(X)
         idx = int(np.argmax(probs))
         return self.idx_to_label[idx], float(probs[idx])

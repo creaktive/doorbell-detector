@@ -3,6 +3,7 @@
 """Train a 1D CNN to classify doorbell audio into downstairs / upstairs / environment."""
 
 import os
+import re
 from collections import Counter
 
 import librosa
@@ -13,33 +14,19 @@ from ai_edge_litert.compiled_model import CompiledModel
 
 from config import (
     BATCH_SIZE, DATA_DIR, EPOCHS, FRAME_LENGTH, FRAME_STEP, LABELS,
-    MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE,
+    MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE, WINDOW_SAMPLES,
 )
 
-def _window_audio(audio, fname, window_samples):
-    """Yield fixed-size windows from raw PCM.
+rng = np.random.default_rng(42)
 
-    ESC-50 files (fname[0].isdigit) are 5s @8kHz → split into non-overlapping
-    2s chunks with a zero-padded remainder if needed.
-    Doorbell files (< 2s) are padded or truncated to one window.
-    """
-    if fname[0].isdigit(): # ESC-50 detection by filename prefix
-        n_chunks = len(audio) // window_samples
-        for i in range(n_chunks):
-            yield audio[i * window_samples : (i + 1) * window_samples].astype("float32")
-        rem_len = len(audio) % window_samples
-        if rem_len > 0:
-            chunk = np.zeros(window_samples, dtype="float32")
-            chunk[:rem_len] = audio[-rem_len:].astype("float32")
-            yield chunk
-    else:
-        # Pad or truncate to one window (doorbell files are always < 2s)
-        if len(audio) < window_samples:
-            pad = np.zeros(window_samples - len(audio), dtype="float32")
-            audio = np.concatenate([audio, pad])
-        else:
-            audio = audio[:window_samples]
-        yield audio.astype("float32")
+
+def load_audio(path):
+    """Yield a single 1s window from wav file via random offset."""
+    audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
+    if len(audio) < WINDOW_SAMPLES:
+        raise ValueError(f"Audio too short ({len(audio)} samples) in {path}")
+    offset = rng.integers(0, len(audio) - WINDOW_SAMPLES + 1)
+    yield audio[offset:offset + WINDOW_SAMPLES].astype("float32")
 
 
 def load_dataset(data_dir):
@@ -47,7 +34,6 @@ def load_dataset(data_dir):
     label_map = {name: i for i, name in enumerate(LABELS)}
 
     xs, ys, fids = [], [], []
-    window_samples = int(SAMPLE_RATE * 2)  # 2 seconds @ 8kHz = 16000
     for label in sorted(os.listdir(data_dir)):
         if label not in label_map:
             continue
@@ -58,25 +44,14 @@ def load_dataset(data_dir):
             if not fname.endswith(".wav"):
                 continue
             path = os.path.join(data_dir, label, fname)
-            y, _ = librosa.load(path, sr=SAMPLE_RATE, mono=True)
-
-            # strip -aug-* suffix so augmented variants group with their source file
-            base_fname = fname.split('-aug-')[0]
-            for chunk in _window_audio(y, fname, window_samples):
-                xs.append(chunk)
+            match = re.search(r"^([a-z-]+[0-9]+)", fname)
+            base_fname = match.group(1) if match else fname
+            for sample in load_audio(path):
+                xs.append(sample)
                 ys.append(label_map[label])
                 fids.append(base_fname)
 
-    # Silence produces a flat-zero spectrogram pattern.
-    # The model was never trained on this and misclassifies it as "upstairs".
-    # Add genuinely silent samples so the model learns silence = environment.
-    n_silence = len(xs) // 4
-    for _ in range(n_silence):
-        xs.append(np.zeros(window_samples, dtype="float32"))
-        ys.append(label_map["environment"])
-        fids.append("__silence__")
-
-    X = np.array(xs, dtype="float32")  # (N, WINDOW_SAMPLES) raw PCM
+    X = np.array(xs, dtype="float32")
     y = np.array(ys, dtype="int32")
     return X, y, np.array(fids, dtype="U256")
 
@@ -100,7 +75,7 @@ class AudioFrontend(tf.keras.layers.Layer):
         )
 
     def call(self, raw_audio):
-        # Pad each sample in the batch to target_samples (batch is already 16000)
+        # Pad each sample in the batch to target_samples
         pad_amount = self.target_samples - tf.shape(raw_audio)[1]
         audio = tf.concat([raw_audio, tf.zeros((tf.shape(raw_audio)[0], tf.maximum(0, pad_amount)), dtype=tf.float32)], axis=1)
 
@@ -112,7 +87,7 @@ class AudioFrontend(tf.keras.layers.Layer):
 
 def build_model():
     """End-to-end model: raw audio → Mel-spectrogram → Residual 1D CNN."""
-    inputs = tf.keras.layers.Input(shape=(SAMPLE_RATE * 2,), dtype=tf.float32, name="audio")
+    inputs = tf.keras.layers.Input(shape=(WINDOW_SAMPLES,), dtype=tf.float32, name="audio")
 
     x = AudioFrontend(sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH,
                       frame_step=FRAME_STEP, max_t=MAX_T)(inputs)
@@ -156,8 +131,6 @@ def main():
     print(f"Class weights: {class_weight}")
 
     # Group-aware train/val split - prevents data leakage from augmented variants
-    # and ESC-50 chunks splitting across buckets.
-    rng = np.random.default_rng(42)
     unique_files = sorted(set(file_ids))
     rng.shuffle(unique_files)
     n_val = max(1, int(len(unique_files) * 0.15))

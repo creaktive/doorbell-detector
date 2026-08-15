@@ -1,15 +1,12 @@
 # Doorbell Detector
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~47 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~57 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
 
 ## Quick Start
 
 ```bash
-# Classify wav files
-python predict.py doorbell-downstairs-1.wav background-noise.wav
-
 # Stream live audio from stdin (raw 16-bit PCM @ 8kHz mono)
-cat audio.raw | python predict_stream.py
+cat audio.raw | python detect.py
 ```
 
 ## Requirements
@@ -73,31 +70,14 @@ Downloads ESC-50 background noise into `data/environment/`.
 python train.py
 ```
 
-Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~47 KB FP16).
+Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~57 KB FP16).
 
 ## Usage
-
-### Batch Prediction
-
-Classify one or more `.wav` files:
-
-```bash
-python predict.py file1.wav [file2.wav ...]
-```
-
-Output is tab-separated: `label\tconfidence\tfilename`
-
-Example:
-```
-downstairs	99.85%	doorbell-downstairs-30.wav
-upstairs	97.20%	doorbell-upstairs-12.wav
-environment	100.00%	background-noise.wav
-```
 
 ### Real-time Stream Prediction
 
 ```bash
-cat audio.raw | python predict_stream.py
+cat audio.raw | python detect.py
 ```
 
 Output on confirmed detection only: `YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL`

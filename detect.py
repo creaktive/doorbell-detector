@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Stream prediction on 16-bit PCM raw audio at 8kHz mono via stdin."""
+"""Stream prediction on 16-bit PCM raw audio at 16kHz mono via stdin."""
 
 import datetime
 import os
@@ -9,15 +9,15 @@ import urllib.request
 
 import numpy as np
 
+from config import SAMPLE_RATE, WINDOW_SAMPLES
 from inferencer import Inferencer
 
 
-WINDOW = 16000       # 2 seconds @ 8kHz
-STRIDE = 800         # trigger detection rate 10 Hz @ 8kHz
-BUF_SIZE = 32768     # read 32KB chunks from stdin (4096 int16, ~0.5s)
-COOLDOWN_SAMPLES = 80000   # 10s cooldown after detection
-CONF_THRESHOLD = 0.9       # force "environment" below this
-DETECTION_STREAK = 10      # detect 10x in a row to trigger notification
+BUF_SIZE = SAMPLE_RATE * 2          # read 1s of 16-bit PCM chunks from stdin
+STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
+COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
+CONF_THRESHOLD = 0.9                # force "environment" below this
+DETECTION_STREAK = 10               # detect 10x in a row to trigger notification
 
 
 def notify(label):
@@ -64,14 +64,16 @@ def main():
         new_samples = np.frombuffer(chunk, dtype=np.int16)
         buf = np.concatenate([buf, new_samples])
 
-        while abs_offset + WINDOW <= len(buf):
+        while abs_offset + WINDOW_SAMPLES <= len(buf):
+            start = abs_offset
+            end = abs_offset + WINDOW_SAMPLES
+
+            abs_offset += STRIDE
+
             # Skip inference during cooldown
             if abs_offset < cooldown_until:
-                abs_offset += STRIDE
                 continue
 
-            start = abs_offset
-            end = abs_offset + WINDOW
             label, conf = inferencer.predict(
                 buf[start:end].astype(np.float32) / 32768.0
             )
@@ -93,14 +95,6 @@ def main():
                 cooldown_until = abs_offset + COOLDOWN_SAMPLES
                 streak_count = 0
                 streak_label = None
-
-            abs_offset += STRIDE
-
-        # Discard processed samples, keep the rest
-        trim = min(abs_offset, len(buf))
-        if trim > 0:
-            buf = buf[trim:]
-            abs_offset -= trim
 
 
 if __name__ == "__main__":
