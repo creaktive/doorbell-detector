@@ -1,6 +1,6 @@
-*.raw
-*.wav
+.DS_Store
 .venv/
 __pycache__/
 data/**/*-aug-*.wav
 data/environment/[1-5]-*.wav
+data.bak/
