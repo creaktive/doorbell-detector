@@ -11,7 +11,7 @@ The entire feature extraction pipeline — STFT + Mel-filterbank — lives insid
 ```
 Training:  wav → librosa.load(mono=False) → each channel yields one sample → random 1s slice → AudioFrontend layer → Mel-spectrogram → CNN → class
 Inference: wav → raw PCM → TFLite model → class
-Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (10 frames) → cooldown (10s) → Pushsafer notification
+Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (5 frames) → cooldown (10s) → Pushsafer notification
 ```
 
 ## Architecture
@@ -39,7 +39,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
-| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (10 frames = ~1s), cooldown mode (10s after detection), Pushsafer notifications | numpy, ai-edge-litert, stdlib (threading, urllib) |
+| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (5 frames = ~0.5s), cooldown mode (10s after detection), Pushsafer notifications | numpy, ai-edge-litert, stdlib (threading, urllib) |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding. Applies 20 transforms per file | bash, sox, find |
 | `get-env-data.sh` | Downloads ESC-50 environmental sounds into `data/environment/` | curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` (16-bit PCM @ 16kHz mono) | bash, sox |
@@ -84,10 +84,10 @@ Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These 
 
 ```bash
 # Training (full pipeline: data → model → .tflite)
-python train.py
+./train.py
 
 # Real-time stream from stdin (raw 16-bit PCM @ 16kHz mono)
-cat audio.raw | python detect.py
+cat audio.raw | ./detect.py
 # Output: YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL on confirmed detection (~once per 10s cooldown)
 ```
 

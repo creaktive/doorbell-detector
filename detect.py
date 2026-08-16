@@ -17,7 +17,7 @@ BUF_SIZE = SAMPLE_RATE * 2          # read 1s of 16-bit PCM chunks from stdin
 STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
 COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
 CONF_THRESHOLD = 0.9                # force "environment" below this
-DETECTION_STREAK = 10               # detect 10x in a row to trigger notification
+DETECTION_STREAK = 5                # detect 5x in a row to trigger notification
 
 
 def notify(label):
@@ -52,10 +52,9 @@ def main():
     inferencer = Inferencer()
 
     buf = np.empty(0, dtype=np.int16)
-    abs_offset = 0
     streak_label = None
     streak_count = 0
-    cooldown_until = -COOLDOWN_SAMPLES   # not in cooldown at start
+    cooldown_samples_left = 0
 
     while True:
         chunk = os.read(0, BUF_SIZE)
@@ -64,18 +63,19 @@ def main():
         new_samples = np.frombuffer(chunk, dtype=np.int16)
         buf = np.concatenate([buf, new_samples])
 
-        while abs_offset + WINDOW_SAMPLES <= len(buf):
-            start = abs_offset
-            end = abs_offset + WINDOW_SAMPLES
+        # Process sliding windows as long as we have enough data in the buffer
+        while len(buf) >= WINDOW_SAMPLES:
 
-            abs_offset += STRIDE
-
-            # Skip inference during cooldown
-            if abs_offset < cooldown_until:
+            # Skip inference if we are in a cooldown period
+            if cooldown_samples_left > 0:
+                cooldown_samples_left -= STRIDE
+                buf = buf[STRIDE:] # Slide buffer forward and discard old samples
                 continue
 
+            # Run inference on the current window
+            window = buf[:WINDOW_SAMPLES]
             label, conf = inferencer.predict(
-                buf[start:end].astype(np.float32) / 32768.0
+                window.astype(np.float32) / 32768.0
             )
 
             # Confidence floor - below threshold => force "environment"
@@ -92,9 +92,12 @@ def main():
             # Streak confirmed → print + notify, enter cooldown
             if streak_count >= DETECTION_STREAK:
                 notify(f"{label.upper()} DOORBELL")
-                cooldown_until = abs_offset + COOLDOWN_SAMPLES
+                cooldown_samples_left = COOLDOWN_SAMPLES
                 streak_count = 0
                 streak_label = None
+
+            # Slide buffer forward by STRIDE to prepare for the next iteration
+            buf = buf[STRIDE:]
 
 
 if __name__ == "__main__":

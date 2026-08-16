@@ -6,7 +6,7 @@ A 1D CNN that classifies doorbell audio into three categories: **downstairs**, *
 
 ```bash
 # Stream live audio from stdin (raw 16-bit PCM @ 8kHz mono)
-cat audio.raw | python detect.py
+arecord -c1 -D plug:dsnoop -f S16_LE -r 16000 -t raw | ./detect.py
 ```
 
 ## Requirements
@@ -67,7 +67,7 @@ Downloads ESC-50 background noise into `data/environment/`.
 ## Training
 
 ```bash
-python train.py
+./train.py
 ```
 
 Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~57 KB FP16).
@@ -77,13 +77,13 @@ Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and
 ### Real-time Stream Prediction
 
 ```bash
-cat audio.raw | python detect.py
+sox data/test/downstairs-test-pi.wav -c 1 -r 16000 -e signed-integer -b 16 -t raw - | ./detect.py
 ```
 
 Output on confirmed detection only: `YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL`
 
 Detection logic:
 - Predictions below 90% confidence are treated as `"environment"`
-- Requires 10 consecutive frames with the same label (~1 second) before triggering
+- Requires 5 consecutive frames with the same label (~0.5 second) before triggering
 - 10-second cooldown after each detection
 - Optional Pushsafer notifications via `PUSHSAFER_KEY` env var
