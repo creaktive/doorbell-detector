@@ -38,7 +38,7 @@ AUGMENTS=(
     "-aug-reverb reverb 50 50 50"
     "-aug-echo echo 0.8 0.88 60 0.4"
     "-aug-flanger flanger 0 3 0 71 0.5 25 linear"
-    "-aug-pad pad 0.1 0.1"
+    "-aug-chorus chorus 0.7 0.8 45 0.35 0.25 1.5 -t"
 )
 
 count=0
