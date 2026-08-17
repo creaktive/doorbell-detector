@@ -6,6 +6,7 @@ import os
 import threading
 import urllib.parse
 import urllib.request
+import wave
 
 import numpy as np
 
@@ -17,7 +18,7 @@ BUF_SIZE = SAMPLE_RATE * 2          # read 1s of 16-bit PCM chunks from stdin
 STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
 COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
 CONF_THRESHOLD = 0.9                # force "environment" below this
-DETECTION_STREAK = 5                # detect 5x in a row to trigger notification
+DETECTION_STREAK = 8                # detect 5x in a row to trigger notification
 
 
 def notify(label):
@@ -81,6 +82,17 @@ def main():
             # Confidence floor - below threshold => force "environment"
             if conf < CONF_THRESHOLD:
                 label = "environment"
+
+            # Write detected window to a file if requested via DUMP_DETECTED env var
+            if label != "environment" and os.environ.get("DUMP_DETECTED"):
+                ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
+                fname = f"detected/doorbell-{label}-{ts}.wav"
+                os.makedirs("detected", exist_ok=True)
+                with wave.open(fname, "wb") as f:
+                    f.setnchannels(1)
+                    f.setsampwidth(2)
+                    f.setframerate(SAMPLE_RATE)
+                    f.writeframes(window.tobytes())
 
             # Streak tracking
             if label == streak_label and label != "environment":
