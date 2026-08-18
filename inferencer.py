@@ -41,8 +41,8 @@ class Inferencer:
 
     def predict(self, audio):
         """Run inference on raw PCM audio (float32, WINDOW_SAMPLES samples @ 16kHz). Returns (label, confidence)."""
-        if len(audio) < WINDOW_SAMPLES:
-            audio = np.concatenate([audio, np.zeros(WINDOW_SAMPLES - len(audio), dtype="float32")])
+        if len(audio) != WINDOW_SAMPLES:
+            raise ValueError(f"Audio must be exactly {WINDOW_SAMPLES} samples ({len(audio)} samples given)")
         X = audio[:WINDOW_SAMPLES].astype("float32").reshape(1, -1)
         probs = self.run(X)
         idx = int(np.argmax(probs))
