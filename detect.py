@@ -83,17 +83,6 @@ def main():
             if conf < CONF_THRESHOLD:
                 label = "environment"
 
-            # Write detected window to a file if requested via DUMP_DETECTED env var
-            if label != "environment" and os.environ.get("DUMP_DETECTED"):
-                ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S%f")
-                fname = f"detected/doorbell-{label}-{ts}.wav"
-                os.makedirs("detected", exist_ok=True)
-                with wave.open(fname, "wb") as f:
-                    f.setnchannels(1)
-                    f.setsampwidth(2)
-                    f.setframerate(SAMPLE_RATE)
-                    f.writeframes(window.tobytes())
-
             # Streak tracking
             if label == streak_label and label != "environment":
                 streak_count += 1
@@ -103,6 +92,17 @@ def main():
 
             # Streak confirmed → print + notify, enter cooldown
             if streak_count >= DETECTION_STREAK:
+                # Write detected window to a file if requested via DUMP_DETECTED env var
+                if os.environ.get("DUMP_DETECTED"):
+                    ts = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    fname = f"detected/doorbell-{label}-{ts}.wav"
+                    os.makedirs("detected", exist_ok=True)
+                    with wave.open(fname, "wb") as f:
+                        f.setnchannels(1)
+                        f.setsampwidth(2)
+                        f.setframerate(SAMPLE_RATE)
+                        f.writeframes(window.tobytes())
+
                 notify(f"{label.upper()} DOORBELL")
                 cooldown_samples_left = COOLDOWN_SAMPLES
                 streak_count = 0
