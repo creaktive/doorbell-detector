@@ -5,7 +5,7 @@ A 1D CNN that classifies doorbell audio into three categories: **downstairs**, *
 ## Quick Start
 
 ```bash
-# Stream live audio from stdin (raw 16-bit PCM @ 8kHz mono)
+# Stream live audio from stdin (raw 16-bit PCM @ 16kHz mono)
 arecord -c1 -D plug:dsnoop -f S16_LE -r 16000 -t raw | ./detect.py
 ```
 
@@ -84,6 +84,6 @@ Output on confirmed detection only: `YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL`
 
 Detection logic:
 - Predictions below 90% confidence are treated as `"environment"`
-- Requires 5 consecutive frames with the same label (~0.5 second) before triggering
+- Requires 8 consecutive frames with the same label (~0.8 second) before triggering
 - 10-second cooldown after each detection
 - Optional Pushsafer notifications via `PUSHSAFER_KEY` env var
