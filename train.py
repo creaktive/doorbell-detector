@@ -22,19 +22,22 @@ rng = np.random.default_rng(42)
 
 def _window(audio):
     """Take a random 1s window from the audio array."""
-    if len(audio) < WINDOW_SAMPLES:
-        raise ValueError(f"Audio too short ({len(audio)} samples)")
     offset = rng.integers(0, len(audio) - WINDOW_SAMPLES + 1)
     return audio[offset:offset + WINDOW_SAMPLES].astype("float32")
 
 
 def load_audio(path):
-    """Yield a single 1s window from each channel of the wav file via random offset."""
+    """Yield 1s windows from each channel of the wav file via random offset.
+    If a channel is longer than WINDOW_SAMPLES * 3, yields several independent random windows.
+    """
     audio, _ = librosa.load(path, sr=SAMPLE_RATE, mono=False)
-    if audio.ndim == 1:
-        yield _window(audio)
-    else:
-        for ch in audio:
+    channels = [audio] if audio.ndim == 1 else audio
+    for ch in channels:
+        len_audio = len(ch)
+        if len_audio < WINDOW_SAMPLES:
+            raise ValueError(f"Audio too short ({len_audio} samples)")
+        n_clips = (len_audio // WINDOW_SAMPLES) + 1 if len_audio > WINDOW_SAMPLES * 3 else 1
+        for _ in range(n_clips):
             yield _window(ch)
 
 
