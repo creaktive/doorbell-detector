@@ -21,7 +21,6 @@ except ImportError:
     alsaaudio = None  # type: ignore[assignment]
 
 
-BUF_SIZE = SAMPLE_RATE * 2          # read 1s of 16-bit PCM chunks from stdin
 STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
 COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
 CONF_THRESHOLD = 0.9                # force "environment" below this
@@ -129,7 +128,8 @@ def run_detector(inferencer, chunk_iter):
 def _pipe_chunks():
     """Yield raw int16 byte chunks from stdin."""
     while _running:
-        chunk = os.read(0, BUF_SIZE)
+        # read 0.1s of 16-bit PCM chunks from stdin
+        chunk = os.read(0, STRIDE * 2)
         if not chunk:
             break
         yield chunk
