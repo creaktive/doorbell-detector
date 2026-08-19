@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-"""Stream prediction on 16-bit PCM raw audio at 16kHz mono via stdin."""
+"""Stream prediction on 16-bit PCM raw audio at 16kHz mono."""
 
 import datetime
 import os
+import signal
+import sys
 import threading
 import urllib.parse
 import urllib.request
@@ -13,12 +15,29 @@ import numpy as np
 from config import SAMPLE_RATE, WINDOW_SAMPLES
 from inferencer import Inferencer
 
+try:
+    import alsaaudio  # type: ignore[import-not-found]
+except ImportError:
+    alsaaudio = None  # type: ignore[assignment]
+
 
 BUF_SIZE = SAMPLE_RATE * 2          # read 1s of 16-bit PCM chunks from stdin
 STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
 COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
 CONF_THRESHOLD = 0.9                # force "environment" below this
-DETECTION_STREAK = 8                # detect 5x in a row to trigger notification
+DETECTION_STREAK = 8                # detect 8x in a row to trigger notification
+
+
+# Graceful exit on SIGINT/SIGTERM
+_running = True
+
+def _handle_signal(signum, frame):
+    global _running
+    _running = False
+
+
+signal.signal(signal.SIGINT, _handle_signal)
+signal.signal(signal.SIGTERM, _handle_signal)
 
 
 def notify(label):
@@ -49,24 +68,19 @@ def _send(req):
         pass
 
 
-def main():
-    inferencer = Inferencer()
-
+def run_detector(inferencer, chunk_iter):
+    """Shared detection loop. Yields raw int16 byte chunks from *chunk_iter*."""
     buf = np.empty(0, dtype=np.int16)
     streak_label = None
     streak_count = 0
     cooldown_samples_left = 0
 
-    while True:
-        chunk = os.read(0, BUF_SIZE)
-        if not chunk:
-            break
-        new_samples = np.frombuffer(chunk, dtype=np.int16)
+    for raw_bytes in chunk_iter:
+        new_samples = np.frombuffer(raw_bytes, dtype=np.int16)
         buf = np.concatenate([buf, new_samples])
 
         # Process sliding windows as long as we have enough data in the buffer
-        while len(buf) >= WINDOW_SAMPLES:
-
+        while _running and len(buf) >= WINDOW_SAMPLES:
             # Skip inference if we are in a cooldown period
             if cooldown_samples_left > 0:
                 cooldown_samples_left -= STRIDE
@@ -110,6 +124,54 @@ def main():
 
             # Slide buffer forward by STRIDE to prepare for the next iteration
             buf = buf[STRIDE:]
+
+
+def _pipe_chunks():
+    """Yield raw int16 byte chunks from stdin."""
+    while _running:
+        chunk = os.read(0, BUF_SIZE)
+        if not chunk:
+            break
+        yield chunk
+
+
+def _live_chunks():
+    """Yield raw int16 byte chunks from ALSA live capture."""
+    devname = os.environ.get("ALSAAUDIO_DEVICE", "default")
+    card = alsaaudio.PCM(
+        type=alsaaudio.PCM_CAPTURE,
+        mode=alsaaudio.PCM_NORMAL,
+        rate=SAMPLE_RATE,
+        channels=1,
+        format=alsaaudio.PCM_FORMAT_S16_LE,
+        periodsize=WINDOW_SAMPLES,
+        device=devname,
+    )
+
+    try:
+        while _running:
+            length, data = card.read()
+            if length <= 0:
+                continue
+            yield data[:length * 2]
+    finally:
+        card.close()
+
+
+def main():
+    inferencer = Inferencer()
+
+    if sys.stdin.isatty():
+        if alsaaudio is not None:
+            print("Listening on ALSA device... (Ctrl+C to stop)")
+            run_detector(inferencer, _live_chunks())
+        else:
+            print("No stdin pipe and alsaaudio unavailable.", file=sys.stderr)
+            print("Pipe raw audio: cat audio.raw | ./detect.py", file=sys.stderr)
+            print("Or install pyalsaaudio on Linux for live capture.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        run_detector(inferencer, _pipe_chunks())
 
 
 if __name__ == "__main__":

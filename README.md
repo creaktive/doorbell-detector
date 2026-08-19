@@ -32,7 +32,7 @@ pip install librosa numpy tensorflow ai-edge-litert
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install numpy ai-edge-litert
+pip install numpy ai-edge-litert pyalsaaudio
 ```
 
 ## Data Preparation
@@ -74,7 +74,7 @@ Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and
 
 ## Usage
 
-### Real-time Stream Prediction
+### Offline Stream Prediction
 
 ```bash
 sox data/test/downstairs-test-pi.wav -c 1 -r 16000 -e signed-integer -b 16 -t raw - | ./detect.py
@@ -87,3 +87,13 @@ Detection logic:
 - Requires 8 consecutive frames with the same label (~0.8 second) before triggering
 - 10-second cooldown after each detection
 - Optional Pushsafer notifications via `PUSHSAFER_KEY` env var
+- Optional WAV dump of detected audio via `DUMP_DETECTED=1` env var (saved to `detected/`)
+
+### Live Capture from Microphone
+
+```bash
+# Requires pyalsaaudio installed and ALSA device available
+./detect.py
+```
+
+Automatically detects when stdin is not a pipe and falls back to ALSA capture.

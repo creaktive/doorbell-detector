@@ -39,8 +39,8 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
-| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications | numpy, ai-edge-litert, stdlib (threading, urllib) |
-| `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, reverb, echo, flanger, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, padding. Applies 20 transforms per file | bash, sox, find |
+| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
+| `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file | bash, sox, find |
 | `get-env-data.sh` | Downloads ESC-50 environmental sounds into `data/environment/` | curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` (16-bit PCM @ 16kHz mono) | bash, sox |
 
@@ -57,7 +57,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 - The Inferencer handles padding to 16000 samples internally if needed.
 
 ### Training specifics
-- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields exactly one random 1s window during training.
+- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
 - Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).
 
@@ -104,7 +104,6 @@ __pycache__/
 data/**/*-aug-*.wav    # augmented files (regenerated)
 data/environment/[1-5]-*.wav   # raw ESC-50 files (downloaded by script)
 data.bak/              # backup directory
-*.raw                  # test artifacts
 ```
 
 ## Model File
