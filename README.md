@@ -46,23 +46,15 @@ data/
 └── upstairs/         # doorbell-upstairs-*.wav
 ```
 
-### Augment your recordings
+### Augment your recordings & download environment data
 
-Apply 20 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.):
+Apply 20 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.) to `data/downstairs/` and `data/upstairs/`, then download ESC-50 into `data/environment/`:
 
 ```bash
-./augment.sh [data_dir]
+./augment.sh
 ```
 
 Augmented files get a `-aug-<name>.wav` suffix and are gitignored.
-
-### Download environmental sounds
-
-```bash
-./get-env-data.sh
-```
-
-Downloads ESC-50 background noise into `data/environment/`.
 
 ## Training
 

@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
-# Augment all .wav files in data/ recursively using sox.
-# Output: same directory as source with -aug-<transform>.wav suffix.
+# Augment .wav files in data/{downstairs,upstairs} using sox, and download ESC-50 dataset to data/environment.
+# Output of augmentation: same directory as source with -aug-<transform>.wav suffix.
 
 set -euo pipefail
-
-SOURCES_DIR="${1:-data}"
-
-if [ ! -d "$SOURCES_DIR" ]; then
-    echo "Error: '$SOURCES_DIR' is not a directory." >&2
-    exit 1
-fi
 
 # Augmentation definitions: suffix sox_args...
 AUGMENTS=(
@@ -57,6 +50,9 @@ while IFS= read -r -d '' wav; do
             fail=$((fail + 1))
         fi
     done
-done < <(find "$SOURCES_DIR" -type f -name '*.wav' -print0)
+done < <(find 'data/downstairs/' 'data/upstairs/' -type f -name '*.wav' -print0)
 
 echo "Done: $count augmented, $fail failed."
+
+curl -q -sL https://github.com/karoldvl/ESC-50/archive/master.zip \
+    | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
