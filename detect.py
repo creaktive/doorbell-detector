@@ -161,7 +161,7 @@ def _live_chunks():
 def main():
     inferencer = Inferencer()
 
-    if sys.stdin.isatty():
+    if sys.stdin.isatty() or os.environ.get("JOURNAL_STREAM"):
         if alsaaudio is not None:
             print("Listening on ALSA device... (Ctrl+C to stop)")
             run_detector(inferencer, _live_chunks())

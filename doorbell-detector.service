@@ -1,0 +1,25 @@
+# mkdir -p ~/.config/systemd/user
+# ln -rs doorbell-detector.service ~/.config/systemd/user/
+# systemctl --user daemon-reload
+# systemctl --user enable --now doorbell-detector.service
+# loginctl enable-linger $USER
+# systemctl --user start doorbell-detector.service
+[Unit]
+Description=Doorbell Detector
+After=sound.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+WorkingDirectory=%h/doorbell-detector
+
+# Environment="ALSAAUDIO_DEVICE=plug:dsnoop"
+# Environment="DUMP_DETECTED=1"
+# Environment="PUSHSAFER_KEY=XXXXXXXXXXXXXXXXXXXX"
+Environment="PATH=%h/doorbell-detector/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=%h/doorbell-detector/.venv/bin/python detect.py
+
+[Install]
+WantedBy=multi-user.target
