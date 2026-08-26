@@ -66,6 +66,14 @@ Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and
 
 ## Usage
 
+### Testing
+
+```bash
+./test.sh
+```
+
+Runs detect.py on each `.wav` in `data/test/`, mixing brown noise for robustness checks.
+
 ### Offline Stream Prediction
 
 ```bash

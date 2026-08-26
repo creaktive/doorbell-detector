@@ -35,7 +35,8 @@ def load_audio(path):
     for ch in channels:
         len_audio = len(ch)
         if len_audio < WINDOW_SAMPLES:
-            raise ValueError(f"Audio too short ({len_audio} samples)")
+            pad = np.zeros(WINDOW_SAMPLES - len_audio, dtype="float32")
+            ch = np.concatenate([ch, pad])
         n_clips = (len_audio // WINDOW_SAMPLES) + 1 if len_audio > WINDOW_SAMPLES * 3 else 1
         for _ in range(n_clips):
             yield _window(ch)
@@ -101,25 +102,32 @@ def build_model():
     """End-to-end model: raw audio → Mel-spectrogram → Residual 1D CNN."""
     inputs = tf.keras.layers.Input(shape=(WINDOW_SAMPLES,), dtype=tf.float32, name="audio")
 
+    # Audio Frontend Output: (batch, MAX_T, N_MELS)
     x = AudioFrontend(sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH,
                       frame_step=FRAME_STEP, max_t=MAX_T)(inputs)
-    # x shape: (batch, MAX_T, N_MELS)
 
-    x = tf.keras.layers.BatchNormalization()(x)
+    # 1. Standardize frontend features per sample
+    x = tf.keras.layers.LayerNormalization(axis=-1)(x)
 
-    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
+    # First Conv Block (Conv -> BN -> ReLU)
+    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same")(x)
     x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
     x = tf.keras.layers.MaxPooling1D(2)(x)
 
+    # Residual Block
     res = x
-    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same", activation="relu")(x)
+    x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same")(x)
     x = tf.keras.layers.BatchNormalization()(x)
+
+    # 2. Add residual path BEFORE activation
     x = tf.keras.layers.add([x, res])
+    x = tf.keras.layers.Activation("relu")(x)
     x = tf.keras.layers.MaxPooling1D(2)(x)
 
+    # Classification Head
     x = tf.keras.layers.GlobalAveragePooling1D()(x)
     x = tf.keras.layers.Dropout(0.2)(x)
-
     outputs = tf.keras.layers.Dense(len(LABELS), activation="softmax")(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)

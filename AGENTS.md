@@ -18,8 +18,8 @@ Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → conf
 
 ```
 Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) mel spectrogram
-                       → BatchNorm → SeparableConv1D(64, k=5) → BatchNorm → MaxPool(2)
-                       → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → MaxPool(2)
+                       → LayerNorm → SeparableConv1D(64, k=5) → BatchNorm → ReLU → MaxPool(2)
+                       → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → ReLU → MaxPool(2)
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
@@ -41,13 +41,13 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/` | bash, sox, find, curl, bsdtar |
-| `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` (16-bit PCM @ 16kHz mono) | bash, sox |
+| `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
 
 ## Conventions & Gotchas
 
 ### Audio format
 - All audio is **16kHz**. Training loads with `librosa.load(path, sr=16000, mono=False)` — multi-channel files yield one sample per channel.
-- Fixed 1-second windows: random offset slice from each channel (no padding). Files shorter than 1s raise an error.
+- Fixed 1-second windows: random offset slice from each channel; short files are zero-padded to 16000 samples.
 - Stream input (`detect.py`) is **16-bit signed int** normalized to float32 by dividing by 32768.
 
 ### Model I/O
