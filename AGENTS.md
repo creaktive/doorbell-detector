@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Runs on a Pi Zero via LiteRT with an FP16 TFLite model (~57 KB).
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Runs on a Pi Zero via LiteRT with an FP16 TFLite model (~59 KB).
 
 The entire feature extraction pipeline — STFT + Mel-filterbank — lives inside the TF graph. The exported `.tflite` accepts raw PCM audio and returns classification. No librosa needed at inference time.
 
@@ -23,7 +23,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
-**Total parameters:** ~8,200 (~57 KB FP16 TFLite)
+**Total parameters:** ~8,100 (~59 KB FP16 TFLite)
 
 ### Key design decisions
 - **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–16000 Hz (doorbell tones are all above 400 Hz).
@@ -39,9 +39,10 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
-| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
+| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/` | bash, sox, find, curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
+| `doorbell-detector.service` | systemd user service for running detect.py as a persistent background daemon. Auto-detects ALSA device, supports PUSHSAFER_KEY and DUMP_DETECTED env vars | — |
 
 ## Conventions & Gotchas
 
@@ -107,7 +108,7 @@ data.bak/              # backup directory
 
 ## Model File
 
-`doorbell.tflite` — FP16 quantized, ~57 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
+`doorbell.tflite` — FP16 quantized, ~59 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
 
 ## Specific instructions for agents
 

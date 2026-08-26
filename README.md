@@ -1,6 +1,6 @@
 # Doorbell Detector
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~57 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~59 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
 
 ## Quick Start
 
@@ -62,7 +62,7 @@ Augmented files get a `-aug-<name>.wav` suffix and are gitignored.
 ./train.py
 ```
 
-Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~57 KB FP16).
+Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~59 KB FP16).
 
 ## Usage
 
@@ -97,3 +97,25 @@ Detection logic:
 ```
 
 Automatically detects when stdin is not a pipe and falls back to ALSA capture.
+
+### Systemd Service (Persistent Daemon)
+
+Run as a background service that auto-starts on boot:
+
+```bash
+mkdir -p ~/.config/systemd/user
+ln -rs doorbell-detector.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now doorbell-detector.service
+loginctl enable-linger $USER
+```
+
+Configure environment variables in the service file:
+
+| Variable | Description |
+|----------|-------------|
+| `ALSAAUDIO_DEVICE` | ALSA capture device (default: auto-detect) |
+| `DUMP_DETECTED=1` | Save detected audio to WAV files |
+| `PUSHSAFER_KEY` | Pushsafer API key for notifications |
+
+The service automatically falls back to ALSA when stdout is connected to journald.
