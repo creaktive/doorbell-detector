@@ -22,4 +22,4 @@ Environment="PATH=%h/doorbell-detector/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=%h/doorbell-detector/.venv/bin/python detect.py
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
