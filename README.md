@@ -54,6 +54,12 @@ Apply 20 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.)
 ./augment.sh
 ```
 
+Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 download):
+
+```bash
+./augment.sh data/downstairs/my-recording.wav data/upstairs/test.wav
+```
+
 Augmented files get a `-aug-<name>.wav` suffix and are gitignored.
 
 ## Training

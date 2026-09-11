@@ -37,22 +37,29 @@ AUGMENTS=(
 count=0
 fail=0
 
-while IFS= read -r -d '' wav; do
-    base="${wav%.wav}"
-    for aug in "${AUGMENTS[@]}"; do
-        suffix="${aug%% *}"
-        args="${aug#* }"
-        out="${base}${suffix}.wav"
-        if sox "$wav" "$out" $args 2>/dev/null; then
-            count=$((count + 1))
-        else
-            echo "FAIL: $wav -> $out" >&2
-            fail=$((fail + 1))
-        fi
+augment_files() {
+    while IFS= read -r -d '' wav; do
+        local base="${wav%.wav}"
+        for aug in "${AUGMENTS[@]}"; do
+            local suffix="${aug%% *}"
+            local args="${aug#* }"
+            local out="${base}${suffix}.wav"
+            if sox "$wav" "$out" $args 2>/dev/null; then
+                count=$((count + 1))
+            else
+                echo "FAIL: $wav -> $out" >&2
+                fail=$((fail + 1))
+            fi
+        done
     done
-done < <(find 'data/downstairs/' 'data/upstairs/' -type f -name '*.wav' -print0)
+    echo "Done: $count augmented, $fail failed."
+}
 
-echo "Done: $count augmented, $fail failed."
+if [ $# -gt 0 ]; then
+    augment_files < <(for wav in "$@"; do printf '%s\0' "$wav"; done)
+else
+    augment_files < <(find 'data/downstairs/' 'data/upstairs/' -type f -name '*.wav' -print0)
 
-curl -q -sL https://github.com/karoldvl/ESC-50/archive/master.zip \
-    | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
+    curl -q -sL https://github.com/karoldvl/ESC-50/archive/master.zip \
+        | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
+fi

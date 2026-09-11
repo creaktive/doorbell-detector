@@ -40,7 +40,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
-| `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/` | bash, sox, find, curl, bsdtar |
+| `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/`. Accepts optional `.wav` paths as arguments to process only those files (skips ESC-50 download) | bash, sox, find, curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
 | `doorbell-detector.service` | systemd user service for running detect.py as a persistent background daemon. Auto-detects ALSA device, supports PUSHSAFER_KEY and DUMP_DETECTED env vars | — |
 
@@ -94,6 +94,12 @@ cat audio.raw | ./detect.py
 ## Augmentation
 
 Run `./augment.sh` to apply 20 transforms to every `.wav` in `data/downstairs/` and `data/upstairs/`, then download ESC-50 to `data/environment/`. Each transform produces a copy with `-aug-<name>.wav` suffix. The script uses `find -print0` for safe filename handling and reports success/failure counts.
+
+Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 download):
+
+```bash
+./augment.sh data/downstairs/my-recording.wav data/upstairs/test.wav
+```
 
 ## Gitignore
 
