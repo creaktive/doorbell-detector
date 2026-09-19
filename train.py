@@ -182,7 +182,7 @@ def main():
 
     converter = tf.lite.TFLiteConverter.from_keras_model(model)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.target_spec.supported_types = [tf.float16]
+    # converter.target_spec.supported_types = [tf.float16]
     tflite_model = converter.convert()
 
     with open(MODEL_TFLITE_PATH, "wb") as f:
