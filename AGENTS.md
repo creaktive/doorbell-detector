@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Runs on a Pi Zero via LiteRT with an FP16 TFLite model (~59 KB).
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). Runs on a Pi Zero via LiteRT with an optimized TFLite model (~45 KB, float32 input/output).
 
 The entire feature extraction pipeline — STFT + Mel-filterbank — lives inside the TF graph. The exported `.tflite` accepts raw PCM audio and returns classification. No librosa needed at inference time.
 
@@ -23,13 +23,13 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
 ```
 
-**Total parameters:** ~8,100 (~59 KB FP16 TFLite)
+**Total parameters:** ~8,100 (~45 KB optimized TFLite)
 
 ### Key design decisions
 - **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–16000 Hz (doorbell tones are all above 400 Hz).
 - **SeparableConv + residual**: Lower parameter count than standard Conv1D while maintaining accuracy.
 - **GlobalAveragePooling instead of Flatten**: Fewer parameters, less overfitting.
-- **FP16 quantization**: Halves model size and memory bandwidth for Pi Zero without int8 I/O complexity.
+- **Runtime quantization**: The exported model keeps float32 input/output while quantizing internal tensors to reduce the deployable file size.
 - **Class weights (inverse frequency)**: Dataset is heavily imbalanced toward "environment" (~90%). Weights compensate during training.
 
 ## Files
@@ -37,9 +37,10 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | File | Role | Dependencies |
 |------|------|-------------|
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
-| `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to FP16 TFLite | librosa, numpy, tensorflow, ai-edge-litert |
+| `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to optimized TFLite | librosa, numpy, tensorflow, ai-edge-litert |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
+| `test-false-positives.sh` | Scans `$HOME` for `.ac3`, `.avi`, `.mkv`, and `.mp3` files, converts them with ffmpeg, and feeds them to `detect.py` | bash, ffmpeg, find |
 | `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/`. Accepts optional `.wav` paths as arguments to process only those files (skips ESC-50 download) | bash, sox, find, curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
 | `doorbell-detector.service` | systemd user service for running detect.py as a persistent background daemon. Auto-detects ALSA device, supports PUSHSAFER_KEY and DUMP_DETECTED env vars | — |
@@ -79,6 +80,7 @@ Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These 
 - **Training**: librosa, numpy, tensorflow (plus ai-edge-litert for tensor inspection post-conversion)
 - **Inference**: numpy, ai-edge-litert only — no librosa, no feature extraction libs
 - **Stream** (`detect.py`): stdlib `threading`, `urllib.request`, `urllib.parse` for Pushsafer notifications (daemon thread, 3s timeout, silent failure)
+- **False-positive scan** (`test-false-positives.sh`): ffmpeg and standard Unix `find`
 
 ## Running
 
@@ -89,6 +91,9 @@ Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These 
 # Real-time stream from stdin (raw 16-bit PCM @ 16kHz mono)
 cat audio.raw | ./detect.py
 # Output: YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL on confirmed detection (~once per 10s cooldown)
+
+# Scan local media for false positives
+./test-false-positives.sh
 ```
 
 ## Augmentation
@@ -114,7 +119,7 @@ data.bak/              # backup directory
 
 ## Model File
 
-`doorbell.tflite` — FP16 quantized, ~59 KB. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
+`doorbell.tflite` — optimized TFLite, ~45 KB with float32 input/output and quantized internal tensors. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
 
 ## Specific instructions for agents
 

@@ -1,6 +1,6 @@
 # Doorbell Detector
 
-A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~59 KB FP16 TFLite file, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
+A 1D CNN that classifies doorbell audio into three categories: **downstairs**, **upstairs**, or **environment** (background noise). The deployed model runs on a Raspberry Pi Zero as a ~45 KB optimized TFLite file with float32 input and output, accepting raw PCM audio and returning a classification - no feature extraction libraries needed at inference time.
 
 ## Quick Start
 
@@ -13,6 +13,7 @@ arecord -c1 -D plug:dsnoop -f S16_LE -r 16000 -t raw | ./detect.py
 
 - Python ≥3.9
 - [sox](https://sourceforge.net/p/sox/wiki/Home/) - audio augmentation and format conversion
+- [ffmpeg](https://ffmpeg.org/) - media conversion for false-positive scanning
 - `bsdtar` (Linux: `sudo apt install libarchive-tools`, macOS: built-in) - environment sounds extraction
 
 ## Setup
@@ -68,7 +69,7 @@ Augmented files get a `-aug-<name>.wav` suffix and are gitignored.
 ./train.py
 ```
 
-Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~59 KB FP16).
+Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and exports `doorbell.tflite` (~45 KB optimized TFLite).
 
 ## Usage
 
@@ -79,6 +80,14 @@ Trains an end-to-end model (raw audio → Mel-spectrogram → CNN → class) and
 ```
 
 Runs detect.py on each `.wav` in `data/test/`, mixing brown noise for robustness checks.
+
+### False-positive scan
+
+```bash
+./test-false-positives.sh
+```
+
+Scans the home directory for `.ac3`, `.avi`, `.mkv`, and `.mp3` files, converts each to 16 kHz mono PCM with `ffmpeg`, and runs the detector. Uncomment `export DUMP_DETECTED=1` in the script to save confirmed detections under `detected/` for inspection.
 
 ### Offline Stream Prediction
 
