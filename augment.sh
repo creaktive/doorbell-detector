@@ -45,7 +45,8 @@ augment_files() {
             local suffix="${aug%% *}"
             local args="${aug#* }"
             local out="${base}${suffix}.wav"
-            if sox "$wav" "$out" $args 2>/dev/null; then
+            # -R: fixed dither seed, so regenerated files are byte-identical
+            if sox -R "$wav" "$out" $args 2>/dev/null; then
                 count=$((count + 1))
             else
                 echo "FAIL: $wav -> $out" >&2
@@ -65,7 +66,6 @@ else
         | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
 
     # The upstairs bell is 976 Hz plus odd harmonics, and the model fired UPSTAIRS on a bare 1 kHz sine.
-    # -R makes the files repeatable.
     for f in $(seq 850 10 1150); do
         sox -R -n -r 16000 -c 1 -b 16 "data/environment/synthetic-sine-$(printf '%04d' "$f").wav" synth 5 sine "$f" vol 0.5
     done
