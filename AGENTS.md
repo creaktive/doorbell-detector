@@ -17,7 +17,7 @@ Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → conf
 ## Architecture
 
 ```
-Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) mel spectrogram
+Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) log-mel spectrogram (zero-padded to MAX_T=128 frames; ~62 hold audio)
                        → LayerNorm → SeparableConv1D(64, k=5) → BatchNorm → ReLU → MaxPool(2)
                        → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → ReLU → MaxPool(2)
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
@@ -26,11 +26,11 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 **Total parameters:** ~8,100 (~45 KB optimized TFLite)
 
 ### Key design decisions
-- **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–16000 Hz (doorbell tones are all above 400 Hz).
+- **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–8000 Hz (Nyquist) (doorbell tones are all above 400 Hz).
 - **SeparableConv + residual**: Lower parameter count than standard Conv1D while maintaining accuracy.
 - **GlobalAveragePooling instead of Flatten**: Fewer parameters, less overfitting.
 - **Runtime quantization**: The exported model keeps float32 input/output while quantizing internal tensors to reduce the deployable file size.
-- **Class weights (inverse frequency)**: Dataset is heavily imbalanced toward "environment" (~90%). Weights compensate during training.
+- **Class weights (inverse frequency)**: Computed from per-class window counts at train time to compensate for class imbalance.
 
 ## Files
 
@@ -41,9 +41,9 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
 | `test-false-positives.sh` | Scans `$HOME` for `.ac3`, `.avi`, `.mkv`, and `.mp3` files, converts them with ffmpeg, and feeds them to `detect.py` | bash, ffmpeg, find |
-| `augment.sh` | Audio augmentation with sox: speed/tempo ±10%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 20 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/`. Accepts optional `.wav` paths as arguments to process only those files (skips ESC-50 download) | bash, sox, find, curl, bsdtar |
+| `augment.sh` | Audio augmentation with sox: speed ±10%, tempo ±5%, pitch ±200 cents, volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus. Applies 19 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/`. Accepts optional `.wav` paths as arguments to process only those files (skips ESC-50 download) | bash, sox, find, curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
-| `doorbell-detector.service` | systemd user service for running detect.py as a persistent background daemon. Auto-detects ALSA device, supports PUSHSAFER_KEY and DUMP_DETECTED env vars | — |
+| `doorbell-detector.service` | systemd user service for running detect.py as a persistent background daemon. Captures from ALSA `default` unless `ALSAAUDIO_DEVICE` is set; supports PUSHSAFER_KEY and DUMP_DETECTED env vars | — |
 
 ## Conventions & Gotchas
 
@@ -54,8 +54,8 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 
 ### Model I/O
 - Input tensor name: `"audio"`, shape `(1, 16000)`, dtype `float32`
-- Output tensor name: softmax probabilities over `[downstairs, upstairs, environment]`
-- The Inferencer handles padding to 16000 samples internally if needed.
+- Output tensor name: `"output_0"` (signature `serving_default`), softmax probabilities over `[downstairs, upstairs, environment]`
+- `Inferencer.predict` does not pad: it raises `ValueError` unless given exactly 16000 samples.
 
 ### Training specifics
 - Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
@@ -98,7 +98,7 @@ cat audio.raw | ./detect.py
 
 ## Augmentation
 
-Run `./augment.sh` to apply 20 transforms to every `.wav` in `data/downstairs/` and `data/upstairs/`, then download ESC-50 to `data/environment/`. Each transform produces a copy with `-aug-<name>.wav` suffix. The script uses `find -print0` for safe filename handling and reports success/failure counts.
+Run `./augment.sh` to apply 19 transforms to every `.wav` in `data/downstairs/` and `data/upstairs/`, then download ESC-50 to `data/environment/`. Each transform produces a copy with `-aug-<name>.wav` suffix. The script uses `find -print0` for safe filename handling and reports success/failure counts.
 
 Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 download):
 
@@ -115,6 +115,7 @@ __pycache__/
 data/**/*-aug-*.wav    # augmented files (regenerated)
 data/environment/[1-5]-*.wav   # raw ESC-50 files (downloaded by script)
 data.bak/              # backup directory
+detected/              # DUMP_DETECTED output from detect.py
 ```
 
 ## Model File

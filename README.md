@@ -49,7 +49,7 @@ data/
 
 ### Augment your recordings & download environment data
 
-Apply 20 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.) to `data/downstairs/` and `data/upstairs/`, then download ESC-50 into `data/environment/`:
+Apply 19 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.) to `data/downstairs/` and `data/upstairs/`, then download ESC-50 into `data/environment/`:
 
 ```bash
 ./augment.sh
@@ -129,7 +129,7 @@ Configure environment variables in the service file:
 
 | Variable | Description |
 |----------|-------------|
-| `ALSAAUDIO_DEVICE` | ALSA capture device (default: auto-detect) |
+| `ALSAAUDIO_DEVICE` | ALSA capture device (default: ALSA `default`) |
 | `DUMP_DETECTED=1` | Save detected audio to WAV files |
 | `PUSHSAFER_KEY` | Pushsafer API key for notifications |
 
