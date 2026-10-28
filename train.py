@@ -55,7 +55,8 @@ def load_dataset(data_dir):
             if not fname.endswith(".wav"):
                 continue
             path = os.path.join(data_dir, label, fname)
-            match = re.search(r"^([a-z-]+[0-9]+)", fname)
+            # ESC-50 groups by Freesound clip ID: 1-100210-A-36.wav and 1-100210-B-36.wav share group 100210, even across folds
+            match = re.search(r"^(?:[0-9]+-)?([a-z-]+[0-9]+|[0-9]+)", fname)
             base_fname = match.group(1) if match else fname
             for sample in load_audio(path):
                 xs.append(sample)
