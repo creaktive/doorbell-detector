@@ -147,7 +147,7 @@ detected/              # DUMP_DETECTED output from detect.py
 
 `doorbell.tflite` — optimized TFLite, ~45 KB with float32 input/output and quantized internal tensors. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
 
-Most of the file is not CNN weights. About half is graph metadata (the in-graph frontend is 45 of the 80 ops). The largest tensor is the int8 mel filterbank, `(FRAME_LENGTH/2+1) × N_MELS` bytes (10,280 now), followed by the float32 Hann window, `FRAME_LENGTH × 4` bytes. The parameter count excludes these frontend constants, so changing `FRAME_LENGTH` or `N_MELS` moves the file size more than the parameter count suggests. Measure with the Analyzer command under Running.
+Most of the file is not CNN weights. About half is graph metadata (the in-graph frontend is 45 of the 80 ops). The largest tensor is the int8 mel filterbank, `(FRAME_LENGTH/2+1) × N_MELS` bytes (10,280 now), followed by the two int8 pointwise conv kernels (4,096 and 2,560 bytes) and the float32 Hann window, `FRAME_LENGTH × 4` bytes (2,048). The parameter count excludes these frontend constants, so changing `FRAME_LENGTH` or `N_MELS` moves the file size more than the parameter count suggests. Measure with the Analyzer command under Running.
 
 ## Specific instructions for agents
 
