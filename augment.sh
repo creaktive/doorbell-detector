@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Augment .wav files in data/{downstairs,upstairs} using sox, and download ESC-50 dataset to data/environment.
+# Augment .wav files in data/{downstairs,upstairs} using sox, download ESC-50 dataset to data/environment,
+# and write pure sine tones around 1 kHz there as negatives.
 # Output of augmentation: same directory as source with -aug-<transform>.wav suffix.
 
 set -euo pipefail
@@ -62,4 +63,10 @@ else
 
     curl -q -sL https://github.com/karoldvl/ESC-50/archive/master.zip \
         | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
+
+    # The upstairs bell is 976 Hz plus odd harmonics, and the model fired UPSTAIRS on a bare 1 kHz sine.
+    # -R makes the files repeatable.
+    for f in $(seq 850 10 1150); do
+        sox -R -n -r 16000 -c 1 -b 16 "data/environment/synthetic-sine-$(printf '%04d' "$f").wav" synth 5 sine "$f" vol 0.5
+    done
 fi

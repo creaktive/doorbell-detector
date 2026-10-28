@@ -49,13 +49,13 @@ data/
 
 ### Augment your recordings & download environment data
 
-Apply 19 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.) to `data/downstairs/` and `data/upstairs/`, then download ESC-50 into `data/environment/`:
+Apply 19 transforms per file (speed, pitch, volume, reverb, filters, echo, etc.) to `data/downstairs/` and `data/upstairs/`, then download ESC-50 and write pure sine tones around 1 kHz (negatives for the 976 Hz upstairs bell) into `data/environment/`:
 
 ```bash
 ./augment.sh
 ```
 
-Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 download):
+Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 and the sine tones):
 
 ```bash
 ./augment.sh data/downstairs/my-recording.wav data/upstairs/test.wav
