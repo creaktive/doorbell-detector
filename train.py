@@ -10,8 +10,6 @@ import librosa
 import numpy as np
 import tensorflow as tf
 
-from ai_edge_litert.compiled_model import CompiledModel
-
 from config import (
     BATCH_SIZE, DATA_DIR, EPOCHS, FRAME_LENGTH, FRAME_STEP, LABELS,
     MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE, WINDOW_SAMPLES,
@@ -188,17 +186,6 @@ def main():
     with open(MODEL_TFLITE_PATH, "wb") as f:
         f.write(tflite_model)
     print(f"Saved {MODEL_TFLITE_PATH} ({len(tflite_model)} bytes)")
-
-    # Print tensor info via LiteRT CompiledModel API (same as runtime inference).
-    compiled = CompiledModel.from_file(MODEL_TFLITE_PATH)
-    sigs = compiled.get_signature_list()
-    sig_key = list(sigs.keys())[0]
-    details = compiled.get_input_tensor_details(sig_key)
-    inp = details[sigs[sig_key]["inputs"][0]]
-    out_details = compiled.get_output_tensor_details(sig_key)
-    out = out_details[sigs[sig_key]["outputs"][0]]
-    print(f"Input name:  '{inp['name']}', shape={list(inp['shape'])}, dtype={inp['dtype']}")
-    print(f"Output name: '{out['name']}', shape={list(out['shape'])}, dtype={out['dtype']}")
 
 if __name__ == "__main__":
     main()

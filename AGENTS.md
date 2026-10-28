@@ -37,7 +37,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (~62, 40) me
 | File | Role | Dependencies |
 |------|------|-------------|
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
-| `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to optimized TFLite | librosa, numpy, tensorflow, ai-edge-litert |
+| `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to optimized TFLite | librosa, numpy, tensorflow |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
 | `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
 | `test-false-positives.sh` | Scans `$HOME` for `.ac3`, `.avi`, `.mkv`, and `.mp3` files, converts them with ffmpeg, and feeds them to `detect.py` | bash, ffmpeg, find |
@@ -77,7 +77,7 @@ data/
 Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These are gitignored.
 
 ### Dependencies by env
-- **Training**: librosa, numpy, tensorflow (plus ai-edge-litert for tensor inspection post-conversion)
+- **Training**: librosa, numpy, tensorflow
 - **Inference**: numpy, ai-edge-litert only — no librosa, no feature extraction libs
 - **Stream** (`detect.py`): stdlib `threading`, `urllib.request`, `urllib.parse` for Pushsafer notifications (daemon thread, 3s timeout, silent failure)
 - **False-positive scan** (`test-false-positives.sh`): ffmpeg and standard Unix `find`

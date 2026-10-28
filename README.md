@@ -24,7 +24,7 @@ arecord -c1 -D plug:dsnoop -f S16_LE -r 16000 -t raw | ./detect.py
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install librosa numpy tensorflow ai-edge-litert
+pip install librosa numpy tensorflow
 ```
 
 ### Inference Environment (Pi Zero, etc.)
