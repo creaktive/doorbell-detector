@@ -17,7 +17,7 @@ Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → conf
 ## Architecture
 
 ```
-Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) log-mel spectrogram (zero-padded to MAX_T=128 frames; ~62 hold audio)
+Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (61, 40) log-mel spectrogram (MAX_T = 1 + (WINDOW_SAMPLES - FRAME_LENGTH) // FRAME_STEP = 61 frames, no zero padding)
                        → LayerNorm → SeparableConv1D(64, k=5) → BatchNorm → ReLU → MaxPool(2)
                        → SeparableConv1D(64, k=5) → BatchNorm → Residual Add → ReLU → MaxPool(2)
                        → GlobalAveragePooling1D → Dropout(0.2) → Softmax(3)
