@@ -58,7 +58,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) lo
 - `Inferencer.predict` does not pad: it raises `ValueError` unless given exactly 16000 samples.
 
 ### Training specifics
-- Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
+- Group-aware, class-stratified validation split: each class's unique source files are shuffled separately (`np.random.default_rng(42)`) and 15% of each class goes to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
 - File names define the groups: `train.py` takes the regex `^([a-z-]+[0-9]+)` of each name, so `upstairs-042-pi.wav`, `upstairs-042-imac.wav` (same number, other device) and their `-aug-` copies land on the same side. Name new files that way; false positives in `data/environment/` follow it too (`false-positive-upstairs-271.wav`). A name the regex misses (uppercase, no digits) becomes its own group and leaks its augmented copies into val.
 - Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).

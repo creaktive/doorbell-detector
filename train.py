@@ -149,15 +149,17 @@ def main():
     print(f"Class weights: {class_weight}")
 
     # Group-aware train/val split - prevents data leakage from augmented variants
-    unique_files = sorted(set(file_ids))
-    rng.shuffle(unique_files)
-    n_val = max(1, int(len(unique_files) * 0.15))
-    val_files = set(unique_files[-n_val:])
+    # Split per class, so each class sends 15% of its own groups to val instead of whatever the shuffle gives
+    val_files = set()
+    for c in range(len(LABELS)):
+        groups = sorted(set(file_ids[y == c]))
+        rng.shuffle(groups)
+        val_files.update(groups[-max(1, int(len(groups) * 0.15)):])
 
     train_mask = np.array([fid not in val_files for fid in file_ids])
     X_train, y_train = X[train_mask], y[train_mask]
     X_val, y_val = X[~train_mask], y[~train_mask]
-    print(f"Train: {X_train.shape[0]}, Val: {X_val.shape[0]} (from {len(unique_files)} unique source files)")
+    print(f"Train: {X_train.shape[0]}, Val: {X_val.shape[0]} (from {len(set(file_ids))} unique source files)")
 
     model = build_model()
     model.summary()
