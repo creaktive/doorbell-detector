@@ -60,7 +60,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) lo
 ### Training specifics
 - Group-aware, class-stratified validation split: each class's unique source files are shuffled separately (`np.random.default_rng(42)`) and 15% of each class goes to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
 - File names define the groups: `train.py` takes the regex `^(?:[0-9]+-)?([a-z-]+[0-9]+|[0-9]+)` of each name, so `upstairs-042-pi.wav`, `upstairs-042-imac.wav` (same number, other device) and their `-aug-` copies land on the same side. ESC-50 files group by Freesound clip ID: `1-100210-A-36.wav` and `1-100210-B-36.wav` share the group `100210`, and so do the 4 clip IDs that ESC-50 puts in two folds (`2-131943-A-38.wav`, `3-131943-A-37.wav`). Name new files that way; false positives in `data/environment/` follow it too (`false-positive-upstairs-271.wav`). A name the regex misses (uppercase, no digits) becomes its own group and leaks its augmented copies into val.
-- Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
+- Early stopping monitors `val_loss` (patience=10) with weight restoration, so training runs about 50 epochs (about 10 minutes). Not `val_accuracy`: it reaches 1.0 within 4-12 epochs, and restoring that first 1.0 epoch kept undertrained models that detected `upstairs-test-pi.wav` 0-3 times in 10 `test.sh` runs (10/10 with `val_loss`).
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).
 - Not reproducible: numpy is seeded but TensorFlow is not, so `val_accuracy` varies between runs on the same data. The same `rng` draws the random windows before the val shuffle, so adding or removing any file changes the split.
 
@@ -114,6 +114,7 @@ python -c 'import tensorflow as tf; tf.lite.experimental.Analyzer.analyze(model_
 ```
 
 - No unit tests, linter or CI. `test.sh` asserts nothing: it prints each file name, then `DOWNSTAIRS DOORBELL` / `UPSTAIRS DOORBELL` if detected. The expected label is the file-name prefix; a name with nothing after it is a miss.
+- `test.sh` mixes in new random brown noise on every run, and training is unseeded, so one run proves little. Count detections of the hardest clip, `upstairs-test-pi.wav`, over 10 runs (expect 10): `for i in $(seq 10); do ./test.sh; echo; done | grep -c -E 'upstairs-test-pi\.wav[[:space:]]+[^[:space:]]+[[:space:]]+UPSTAIRS'`
 - `test.sh` sends `detect.py` stderr to `/dev/null`, so a crash shows as one file name and exit status 1. Run the one-clip command to see the error.
 - A clip triggers only if it has at least 1.7 s of audio: one 1 s window plus 7 strides of 100 ms for the 8-frame streak.
 

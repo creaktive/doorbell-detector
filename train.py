@@ -166,7 +166,8 @@ def main():
     model.summary()
 
     callbacks = [
-        tf.keras.callbacks.EarlyStopping("val_accuracy", patience=10, mode="max", restore_best_weights=True),
+        # Not val_accuracy: it can hit 1.0 by epoch 4, and restoring that first 1.0 epoch keeps an undertrained model
+        tf.keras.callbacks.EarlyStopping("val_loss", patience=10, restore_best_weights=True),
         tf.keras.callbacks.ReduceLROnPlateau("val_loss", factor=0.5, patience=5, min_lr=1e-6),
     ]
 
@@ -174,8 +175,8 @@ def main():
                         validation_data=(X_val, y_val), class_weight=class_weight, callbacks=callbacks)
 
     # Report final val accuracy
-    best_epoch = np.argmax(history.history["val_accuracy"]) + 1
-    print(f"Best epoch: {best_epoch}, val_accuracy: {history.history['val_accuracy'][best_epoch-1]:.4f}")
+    best_epoch = np.argmin(history.history["val_loss"]) + 1
+    print(f"Best epoch: {best_epoch}, val_loss: {history.history['val_loss'][best_epoch-1]:.2e}, val_accuracy: {history.history['val_accuracy'][best_epoch-1]:.4f}")
 
     # Float16 quantization for Pi Zero: halves model size, faster ARM inference.
     # Float16 avoids the int8 I/O complexity while still cutting memory bandwidth in half.
