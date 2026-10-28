@@ -29,7 +29,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) lo
 - **Mel-spectrogram in-graph**: Self-contained model, no feature extraction deps at inference. STFT params: frame_length=512, frame_step=256, n_mels=40, freq range 400–8000 Hz (Nyquist) (doorbell tones are all above 400 Hz).
 - **SeparableConv + residual**: Lower parameter count than standard Conv1D while maintaining accuracy.
 - **GlobalAveragePooling instead of Flatten**: Fewer parameters, less overfitting.
-- **Runtime quantization**: The exported model keeps float32 input/output while quantizing internal tensors to reduce the deployable file size.
+- **Runtime quantization**: The exported model keeps float32 input/output while quantizing internal tensors to reduce the deployable file size (`Optimize.DEFAULT` dynamic range: large constants become int8). The FP16 comments and print in `train.py` are stale; the float16 line is commented out.
 - **Class weights (inverse frequency)**: Computed from per-class window counts at train time to compensate for class imbalance.
 
 ## Files
@@ -59,12 +59,16 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (128, 40) lo
 
 ### Training specifics
 - Group-aware validation split: unique source files are shuffled (`np.random.default_rng(42)`) and 15% go to val. Augmented variants from the same file never leak across train/val boundaries. Each channel of each file yields one or more random 1s windows during training (multiple for files >3s).
+- File names define the groups: `train.py` takes the regex `^([a-z-]+[0-9]+)` of each name, so `upstairs-042-pi.wav`, `upstairs-042-imac.wav` (same number, other device) and their `-aug-` copies land on the same side. Name new files that way; false positives in `data/environment/` follow it too (`false-positive-upstairs-271.wav`). A name the regex misses (uppercase, no digits) becomes its own group and leaks its augmented copies into val.
 - Early stopping monitors `val_accuracy` (patience=10, max mode) with weight restoration.
 - ReduceLROnPlateau on `val_loss` (factor=0.5, patience=5).
+- Not reproducible: numpy is seeded but TensorFlow is not, so `val_accuracy` varies between runs on the same data. The same `rng` draws the random windows before the val shuffle, so adding or removing any file changes the split.
 
 ### Platform quirks
 - `get_output_tensor_details()` doesn't exist on Linux/RPi builds of `ai-edge-litert`. Output shape is derived from `LABELS` instead.
 - The CompiledModel API uses buffer-based I/O: `create_input_buffer_by_name()`, `write()`, `run_by_name()`, `read()`.
+- `ai-edge-litert` has no wheel for Intel macOS (x86_64, Python 3.12), and the training env doesn't install it. Run `detect.py` and `test.sh` on the Pi.
+- `detect.py` ignores piped stdin when `JOURNAL_STREAM` is set and captures from ALSA instead (meant for systemd). Unset it if it leaks into your shell.
 
 ### Data directory structure
 ```
@@ -84,17 +88,34 @@ Augmented files follow naming: `doorbell-downstairs-1-aug-speed-0-9.wav`. These 
 
 ## Running
 
+Run from the repo root with the venv active: the scripts use `#!/usr/bin/env python`, and `doorbell.tflite`, `data/` and `detected/` are relative paths.
+
 ```bash
-# Training (full pipeline: data → model → .tflite)
+source .venv/bin/activate
+
+# Training (full pipeline: data → model → .tflite); overwrites the tracked doorbell.tflite and prints its size in bytes
 ./train.py
 
 # Real-time stream from stdin (raw 16-bit PCM @ 16kHz mono)
 cat audio.raw | ./detect.py
 # Output: YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL on confirmed detection (~once per 10s cooldown)
 
+# Every data/test/*.wav through detect.py, mixed with brown noise (NOISE_VOL default 0.9, 0 = clean)
+./test.sh [NOISE_VOL]
+
+# One clip
+sox data/test/downstairs-test-pi.wav -c 1 -r 16000 -e signed-integer -b 16 -t raw - | ./detect.py
+
 # Scan local media for false positives
 ./test-false-positives.sh
+
+# Bytes per tensor in the exported model
+python -c 'import tensorflow as tf; tf.lite.experimental.Analyzer.analyze(model_path="doorbell.tflite")'
 ```
+
+- No unit tests, linter or CI. `test.sh` asserts nothing: it prints each file name, then `DOWNSTAIRS DOORBELL` / `UPSTAIRS DOORBELL` if detected. The expected label is the file-name prefix; a name with nothing after it is a miss.
+- `test.sh` sends `detect.py` stderr to `/dev/null`, so a crash shows as one file name and exit status 1. Run the one-clip command to see the error.
+- A clip triggers only if it has at least 1.7 s of audio: one 1 s window plus 7 strides of 100 ms for the 8-frame streak.
 
 ## Augmentation
 
@@ -103,8 +124,10 @@ Run `./augment.sh` to apply 19 transforms to every `.wav` in `data/downstairs/` 
 Pass specific `.wav` paths as arguments to augment only those files (skips ESC-50 download):
 
 ```bash
-./augment.sh data/downstairs/my-recording.wav data/upstairs/test.wav
+./augment.sh data/downstairs/downstairs-061-pi.wav data/upstairs/upstairs-052-pi.wav
 ```
+
+Without arguments the script also re-augments existing `-aug-` files, because its `find` does not exclude them. Pass only the new files, or first run `find data -name '*-aug-*.wav' -delete` (they are regenerated).
 
 ## Gitignore
 
@@ -121,6 +144,8 @@ detected/              # DUMP_DETECTED output from detect.py
 ## Model File
 
 `doorbell.tflite` — optimized TFLite, ~45 KB with float32 input/output and quantized internal tensors. This is the deployable artifact for edge inference. Regenerated each time `train.py` runs successfully.
+
+Most of the file is not CNN weights. About half is graph metadata (the in-graph frontend is 45 of the 80 ops). The largest tensor is the int8 mel filterbank, `(FRAME_LENGTH/2+1) × N_MELS` bytes (10,280 now), followed by the float32 Hann window, `FRAME_LENGTH × 4` bytes. The parameter count excludes these frontend constants, so changing `FRAME_LENGTH` or `N_MELS` moves the file size more than the parameter count suggests. Measure with the Analyzer command under Running.
 
 ## Specific instructions for agents
 
