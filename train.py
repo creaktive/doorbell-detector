@@ -15,7 +15,10 @@ from config import (
     MAX_T, MODEL_TFLITE_PATH, N_MELS, SAMPLE_RATE, WINDOW_SAMPLES,
 )
 
+# Seed Python, NumPy and TF and use deterministic kernels, so the same data on the same machine gives the same model
 rng = np.random.default_rng(42)
+tf.keras.utils.set_random_seed(42)
+tf.config.experimental.enable_op_determinism()
 
 
 def _window(audio):
