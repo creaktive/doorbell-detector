@@ -24,7 +24,7 @@ except ImportError:
 STRIDE = SAMPLE_RATE // 10          # trigger detection rate 10 Hz
 COOLDOWN_SAMPLES = SAMPLE_RATE * 10 # 10s cooldown after detection
 CONF_THRESHOLD = 0.9                # force "environment" below this
-DETECTION_STREAK = 8                # detect 8x in a row to trigger notification
+DETECTION_STREAK = 6                # detect 6x in a row to trigger notification
 
 
 # Graceful exit on SIGINT/SIGTERM

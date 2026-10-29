@@ -99,7 +99,7 @@ Output on confirmed detection only: `YYYY-MM-DDTHH:MM:SS\tLABEL DOORBELL`
 
 Detection logic:
 - Predictions below 90% confidence are treated as `"environment"`
-- Requires 8 consecutive frames with the same label (~0.8 second) before triggering
+- Requires 6 consecutive frames with the same label (~0.6 second) before triggering
 - 10-second cooldown after each detection
 - Optional Pushsafer notifications via `PUSHSAFER_KEY` env var
 - Optional WAV dump of detected audio via `DUMP_DETECTED=1` env var (saved to `detected/`)

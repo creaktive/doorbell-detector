@@ -11,7 +11,7 @@ The entire feature extraction pipeline — STFT + Mel-filterbank — lives insid
 ```
 Training:  wav → librosa.load(mono=False) → each channel yields one sample → random 1s slice → AudioFrontend layer → Mel-spectrogram → CNN → class
 Inference: wav → raw PCM → TFLite model → class
-Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (8 frames) → cooldown (10s) → Pushsafer notification
+Stream:    stdin (int16 @ 16kHz) → float32 normalize → TFLite model → confidence floor (<90% → "environment") → streak detection (6 frames) → cooldown (10s) → Pushsafer notification
 ```
 
 ## Architecture
@@ -39,7 +39,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (61, 40) log
 | `config.py` | Shared constants (sample rate, model paths, labels, STFT params) | — |
 | `train.py` | Training script: loads data, builds end-to-end model with in-graph Mel extraction, trains, converts to optimized TFLite | librosa, numpy, tensorflow |
 | `inferencer.py` | LiteRT inference wrapper. `Inferencer.predict(audio)` takes raw float32 PCM (16000 samples @ 16kHz) and returns `(label, confidence)` | numpy, ai-edge-litert |
-| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (8 frames = ~0.8s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
+| `detect.py` | Real-time stream prediction via stdin (16-bit PCM @ 16kHz mono). 1s windows, 10 Hz trigger rate, sliding stride of 1600 samples (~100ms), confidence floor <90% → "environment", streak confirmation (6 frames = ~0.6s), cooldown mode (10s after detection), Pushsafer notifications, optional ALSA live capture, DUMP_DETECTED WAV export. Auto-detects systemd `JOURNAL_STREAM` env var for journald-compatible operation | numpy, ai-edge-litert, pyalsaaudio (optional), stdlib (threading, urllib, wave) |
 | `test-false-positives.sh` | Scans `$HOME` for `.ac3`, `.avi`, `.mkv`, and `.mp3` files, converts them with ffmpeg, and feeds them to `detect.py` | bash, ffmpeg, find |
 | `augment.sh` | Audio augmentation with sox: volume ±30%, overdrive, compand, lowpass/highpass/bandpass filtering, EQ dip, proximity effect, reverb, echo, flanger, chorus (no speed/tempo/pitch, see Augmentation). Applies 13 transforms per file in `data/downstairs/` and `data/upstairs/`, also downloads ESC-50 to `data/environment/` and writes 31 pure sine tones there (850-1150 Hz, 5 s, `synthetic-sine-*.wav`) as negatives. Accepts optional `.wav` paths as arguments to process only those files (skips ESC-50 and the sines) | bash, sox, find, curl, bsdtar |
 | `test.sh` | Quick test: runs detect.py on each `.wav` in `data/test/` with brown noise mix for robustness checks (16-bit PCM @ 16kHz mono) | bash, sox |
@@ -116,7 +116,8 @@ python -c 'import tensorflow as tf; tf.lite.experimental.Analyzer.analyze(model_
 - No unit tests, linter or CI. `test.sh` asserts nothing: it prints each file name, then `DOWNSTAIRS DOORBELL` / `UPSTAIRS DOORBELL` if detected. The expected label is the file-name prefix; a name with nothing after it is a miss.
 - `test.sh` mixes in new random brown noise on every run, and training is unseeded, so one run proves little. Count detections of the hardest clip, `upstairs-test-pi.wav`, over 10 runs (expect 10): `for i in $(seq 10); do ./test.sh; echo; done | grep -c -E 'upstairs-test-pi\.wav[[:space:]]+[^[:space:]]+[[:space:]]+UPSTAIRS'`
 - `test.sh` sends `detect.py` stderr to `/dev/null`, so a crash shows as one file name and exit status 1. Run the one-clip command to see the error.
-- A clip triggers only if it has at least 1.7 s of audio: one 1 s window plus 7 strides of 100 ms for the 8-frame streak.
+- `DETECTION_STREAK` is 6 (was 8 until 2026-10-29): the `pi2` rings keep the model above 90% for only 5-9 windows, so 8 confirmed `downstairs-test-pi2` just 6.6/10 times. Over 5 seeds and 19 h of `_A_`, streak 8/7/6 gave `downstairs-test-pi2` 6.6/9.2/9.6 of 10 and 2.0/2.2/2.6 false detections per model.
+- A clip triggers only if it has at least 1.5 s of audio: one 1 s window plus 5 strides of 100 ms for the 6-frame streak.
 
 ## Augmentation
 
