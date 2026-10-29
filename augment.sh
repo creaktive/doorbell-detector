@@ -28,8 +28,34 @@ AUGMENTS=(
     "-aug-chorus chorus 0.7 0.8 45 0.35 0.25 1.5 -t"
 )
 
+# Noise mix on a third of the files: whether a file gets one, and the noise type, come from a hash of its name, so
+# regenerating gives identical files. Quiet noise only: louder mixes (0.6, 0.9) lengthened detections a bit more
+# but doubled false detections on held-out media. Signal at -3 dB peak plus noise, all channels kept.
+NOISES=(brownnoise pinknoise whitenoise)
+NOISE_VOL=0.3
+
 count=0
 fail=0
+
+add_noise() {
+    local wav="$1"
+    local out="${wav%.wav}-aug-noise.wav"
+    local h
+    h=$(printf '%s' "$(basename "$wav")" | cksum | cut -d' ' -f1)
+    local noise="${NOISES[$((h % 3))]}"
+    (( (h / 3) % 3 == 0 )) || return 0
+    local dur rate channels
+    dur=$(soxi -D "$wav")
+    rate=$(soxi -r "$wav")
+    channels=$(soxi -c "$wav")
+    if sox -R -m "|sox -R \"$wav\" -p gain -n -3" \
+        "|sox -R -n -r $rate -c $channels -p synth $dur $noise vol $NOISE_VOL" -b 16 "$out" 2>/dev/null; then
+        count=$((count + 1))
+    else
+        echo "FAIL: $wav -> $out" >&2
+        fail=$((fail + 1))
+    fi
+}
 
 augment_files() {
     while IFS= read -r -d '' wav; do
@@ -46,6 +72,7 @@ augment_files() {
                 fail=$((fail + 1))
             fi
         done
+        add_noise "$wav"
     done
     echo "Done: $count augmented, $fail failed."
 }
