@@ -144,13 +144,15 @@ def _live_chunks():
         rate=SAMPLE_RATE,
         channels=1,
         format=alsaaudio.PCM_FORMAT_S16_LE,
-        periodsize=WINDOW_SAMPLES,
+        periodsize=STRIDE,  # dsnoop buffers ~0.34s; read small chunks so inference never falls behind
         device=devname,
     )
 
     try:
         while _running:
             length, data = card.read()
+            if length < 0:
+                print(f"ALSA read error {length} (overrun?), audio dropped", file=sys.stderr, flush=True)
             if length <= 0:
                 continue
             yield data[:length * 2]

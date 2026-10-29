@@ -68,6 +68,7 @@ Input(16000,) raw PCM → AudioFrontend (STFT + Mel-filterbank) → (61, 40) log
 - `get_output_tensor_details()` doesn't exist on Linux/RPi builds of `ai-edge-litert`. Output shape is derived from `LABELS` instead.
 - The CompiledModel API uses buffer-based I/O: `create_input_buffer_by_name()`, `write()`, `run_by_name()`, `read()`.
 - `ai-edge-litert` has no wheel for Intel macOS (x86_64, Python 3.12), and the training env doesn't install it. Run `detect.py` and `test.sh` on the Pi.
+- `plug:dsnoop` on the Pi buffers only 5461 frames at 16 kHz (~341 ms). `detect.py` reads ALSA in `STRIDE` periods (100 ms) so each read gets one inference (~31 ms on the Pi). With 1 s periods (until 2026-10-29) each read was followed by 10 inferences (~310 ms), leaving ~30 ms of slack, so ALSA could overrun and drop audio silently. That is the likely cause (not yet confirmed live) of live rings, mostly upstairs, being missed while the same rings piped from files were detected. A negative `read()` length is now logged to stderr as `ALSA read error`. Check `arecord -D plug:dsnoop -r 16000 -c 1 -f S16_LE -d 1 -v /dev/null` for `buffer_size` before raising per-window work.
 - `detect.py` ignores piped stdin when `JOURNAL_STREAM` is set and captures from ALSA instead (meant for systemd). Unset it if it leaks into your shell.
 
 ### Data directory structure
