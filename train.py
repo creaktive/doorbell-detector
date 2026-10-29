@@ -16,8 +16,9 @@ from config import (
 )
 
 # Seed Python, NumPy and TF and use deterministic kernels, so the same data on the same machine gives the same model
-rng = np.random.default_rng(42)
-tf.keras.utils.set_random_seed(42)
+SEED = int(os.environ.get("SEED", 3))
+rng = np.random.default_rng(SEED)
+tf.keras.utils.set_random_seed(SEED)
 tf.config.experimental.enable_op_determinism()
 
 
