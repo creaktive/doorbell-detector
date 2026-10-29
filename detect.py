@@ -165,7 +165,7 @@ def main():
 
     if sys.stdin.isatty() or os.environ.get("JOURNAL_STREAM"):
         if alsaaudio is not None:
-            print("Listening on ALSA device... (Ctrl+C to stop)")
+            print("Listening on ALSA device... (Ctrl+C to stop)", flush=True)
             run_detector(inferencer, _live_chunks())
         else:
             print("No stdin pipe and alsaaudio unavailable.", file=sys.stderr)
