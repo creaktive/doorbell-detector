@@ -7,14 +7,7 @@ set -euo pipefail
 
 # Augmentation definitions: suffix sox_args...
 AUGMENTS=(
-    # Speed & Pitch
-    "-aug-speed-0-9 speed 0.9"
-    "-aug-speed-1-1 speed 1.1"
-    "-aug-tempo-0-95 tempo 0.95"
-    "-aug-tempo-1-05 tempo 1.05"
-    "-aug-pitch-200 pitch -200"
-    "-aug-pitch+200 pitch +200"
-
+    # No speed, tempo or pitch shifts: they teach "any tone near 1 kHz is a bell" and raise false positives
     # Volume & Dynamics
     "-aug-vol-0-7 vol 0.7"
     "-aug-vol-1-3 vol 1.3"
