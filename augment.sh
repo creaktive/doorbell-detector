@@ -55,8 +55,11 @@ if [ $# -gt 0 ]; then
 else
     augment_files < <(find 'data/downstairs/' 'data/upstairs/' -type f -name '*.wav' -print0)
 
-    curl -q -sL https://github.com/karoldvl/ESC-50/archive/master.zip \
-        | bsdtar -v -x -f - -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
+    # Download to a file: bsdtar quits reading the pipe early, curl then exits 23 and pipefail kills the script.
+    esc50=$(mktemp)
+    curl -q -sfL -o "$esc50" https://github.com/karoldvl/ESC-50/archive/master.zip
+    bsdtar -v -x -f "$esc50" -C 'data/environment/' --strip-components 2 'ESC-50-master/audio/*.wav'
+    rm -f "$esc50"
 
     # The upstairs bell is 976 Hz plus odd harmonics, and the model fired UPSTAIRS on a bare 1 kHz sine.
     for f in $(seq 850 10 1150); do
