@@ -87,7 +87,7 @@ class AudioFrontend(tf.keras.layers.Layer):
             num_spectrogram_bins=frame_length // 2 + 1,
             sample_rate=sample_rate,
             lower_edge_hertz=400.0, # doorbell tones are all above this
-            upper_edge_hertz=sample_rate / 2.0
+            upper_edge_hertz=6000.0 # plug:dsnoop @16 kHz rolls off above 6 kHz (-6 dB at 6.5k, -17 dB at 7k)
         )
 
     def call(self, raw_audio):
