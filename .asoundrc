@@ -1,0 +1,16 @@
+pcm.mic_dsnoop {
+    type dsnoop
+    ipc_key 1024
+    slave {
+        pcm "hw:seeed2micvoicec"
+        channels 2
+        rate 16000
+        format S16_LE
+    }
+}
+
+pcm.mic_left {
+    type plug
+    slave.pcm "mic_dsnoop"
+    ttable.0.0 1
+}

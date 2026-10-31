@@ -113,6 +113,25 @@ Detection logic:
 
 Automatically detects when stdin is not a pipe and falls back to ALSA capture.
 
+### Optional: `.asoundrc` for the ReSpeaker 2-Mics Pi HAT
+
+The [ReSpeaker 2-Mics Pi HAT](https://www.seeedstudio.com/ReSpeaker-2-Mics-Pi-HAT.html) captures in stereo. Asking a generic `plug` device for 1 channel averages both mics, a mix the model never saw in training (training uses each channel alone). The bundled `.asoundrc` defines:
+
+- `mic_dsnoop`: a shared (`dsnoop`) capture of the HAT at 16 kHz, 2 channels, S16_LE, so the codec records at the model's rate and ALSA does no resampling
+- `mic_left`: a `plug` on top of it that passes only the left mic (`ttable.0.0 1`) as mono
+
+Install and use it:
+
+```bash
+arecord -l                     # card name must match hw:seeed2micvoicec; edit .asoundrc if not
+ln -rs .asoundrc ~/.asoundrc   # or merge into an existing ~/.asoundrc
+arecord -D mic_left -r 16000 -c 1 -f S16_LE -d 1 -v /dev/null 2>&1 | grep -iE '<-|Snoop'
+# expect "0 <- 0" (not "0*0.5 + 1*0.5") and "Direct Snoop PCM"
+ALSAAUDIO_DEVICE=mic_left ./detect.py
+```
+
+`dsnoop` is shared, so `arecord -D mic_left` works while the service is running. For the systemd service, set `Environment="ALSAAUDIO_DEVICE=mic_left"`.
+
 ### Systemd Service (Persistent Daemon)
 
 Run as a background service that auto-starts on boot:
@@ -129,7 +148,7 @@ Configure environment variables in the service file:
 
 | Variable | Description |
 |----------|-------------|
-| `ALSAAUDIO_DEVICE` | ALSA capture device (default: ALSA `default`) |
+| `ALSAAUDIO_DEVICE` | ALSA capture device (default: ALSA `default`; `mic_left` with the bundled `.asoundrc`) |
 | `DUMP_DETECTED=1` | Save detected audio to WAV files |
 | `PUSHSAFER_KEY` | Pushsafer API key for notifications |
 
