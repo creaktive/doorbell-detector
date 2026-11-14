@@ -16,7 +16,7 @@ from config import (
 )
 
 # Seed Python, NumPy and TF and use deterministic kernels, so the same data on the same machine gives the same model
-SEED = int(os.environ.get("SEED", 42))
+SEED = int(os.environ.get("SEED", 3))
 rng = np.random.default_rng(SEED)
 tf.keras.utils.set_random_seed(SEED)
 tf.config.experimental.enable_op_determinism()
@@ -109,9 +109,8 @@ def build_model():
     x = AudioFrontend(sample_rate=SAMPLE_RATE, n_mels=N_MELS, frame_length=FRAME_LENGTH,
                       frame_step=FRAME_STEP, max_t=MAX_T)(inputs)
 
-    # Standardize per window (time x mel), not per frame: removes device/room/distance gain
-    # but keeps the loudness envelope, so quiet background isn't amplified to chime level
-    x = tf.keras.layers.LayerNormalization(axis=[1, 2], center=False, scale=False)(x)
+    # 1. Standardize frontend features per sample
+    x = tf.keras.layers.LayerNormalization(axis=-1)(x)
 
     # First Conv Block (Conv -> BN -> ReLU)
     x = tf.keras.layers.SeparableConv1D(64, kernel_size=5, padding="same")(x)
